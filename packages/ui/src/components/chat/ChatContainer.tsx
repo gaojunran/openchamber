@@ -30,6 +30,7 @@ import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { Icon } from "@/components/icon/Icon";
 import { cn, formatDirectoryName } from '@/lib/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { eventMatchesShortcut, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 
 // New sync system imports
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -599,6 +600,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const [embeddedAllowPrompting, setEmbeddedAllowPrompting] = React.useState(initialAllowPromptingSubagentSessions);
     const isTimelineDialogOpen = useUIStore((s) => s.isTimelineDialogOpen);
     const setTimelineDialogOpen = useUIStore((s) => s.setTimelineDialogOpen);
+    const shortcutOverrides = useUIStore((s) => s.shortcutOverrides);
 
     // Streaming state
     const streamingMessageId = useStreamingStore(
@@ -998,6 +1000,31 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 return;
             }
 
+            const prevMessageCombo = getEffectiveShortcutCombo('jump_prev_user_message', shortcutOverrides);
+            const nextMessageCombo = getEffectiveShortcutCombo('jump_next_user_message', shortcutOverrides);
+            const isPrevMessageShortcut = eventMatchesShortcut(event, prevMessageCombo);
+            const isNextMessageShortcut = eventMatchesShortcut(event, nextMessageCombo);
+
+            if (isPrevMessageShortcut || isNextMessageShortcut) {
+                const { activeMainTab } = useUIStore.getState();
+                if (activeMainTab !== 'chat' || hasBlockingChatOverlay()) {
+                    return;
+                }
+
+                const scrollContainer = scrollRef.current;
+                if (shouldIgnoreChatNavigationForFocus(document.activeElement, scrollContainer)) {
+                    return;
+                }
+
+                if (shouldIgnoreChatNavigationTarget(event.target)) {
+                    return;
+                }
+
+                event.preventDefault();
+                void navigation.scrollByTurnOffset(isPrevMessageShortcut ? -1 : 1, { resumePastEnd: false });
+                return;
+            }
+
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
                 return;
             }
@@ -1029,7 +1056,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         return () => {
             window.removeEventListener('keydown', handleChatTurnKeyDown);
         };
-    }, [currentSessionId, isDesktopExpandedInput, navigation, scrollRef]);
+    }, [currentSessionId, isDesktopExpandedInput, navigation, scrollRef, shortcutOverrides]);
 
     React.useLayoutEffect(() => {
         const container = scrollRef.current;

@@ -191,6 +191,20 @@ const SHORTCUT_ACTIONS: ReadonlyArray<ShortcutAction> = [
     customizable: true,
   },
   {
+    id: 'jump_prev_user_message',
+    defaultCombo: 'shift+pageup',
+    label: 'Jump to previous user message',
+    description: 'Scroll to the previous user prompt in the conversation',
+    customizable: true,
+  },
+  {
+    id: 'jump_next_user_message',
+    defaultCombo: 'shift+pagedown',
+    label: 'Jump to next user message',
+    description: 'Scroll to the next user prompt in the conversation',
+    customizable: true,
+  },
+  {
     id: 'toggle_prompt_navigator',
     defaultCombo: 'mod+alt+p',
     label: 'Toggle prompt navigator',
