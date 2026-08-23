@@ -251,7 +251,7 @@ export const TimelineDialog: React.FC<TimelineDialogProps> = ({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[70vh] max-md:max-h-[85dvh] flex flex-col overflow-y-visible">
+            <DialogContent className="max-w-2xl max-h-[70vh] max-md:max-h-[85dvh] flex flex-col overflow-y-auto">
                 <DialogHeader className="shrink-0">
                     <DialogTitle className="flex items-center gap-2">
                         <Icon name="time" className="h-5 w-5" />
