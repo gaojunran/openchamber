@@ -54,6 +54,13 @@ export interface MobileComposerShellOptions {
 export interface MobileComposerShell {
     /** The full composer is showing rather than the collapsed pill. */
     expanded: boolean;
+    /**
+     * The full composer has been mounted at least once (or should stay up
+     * permanently). After that it stays mounted, hidden via CSS rather than
+     * unmounted, so the CodeMirror view survives pill folds and re-expanding
+     * never rebuilds it on the main thread.
+     */
+    everMounted: boolean;
     /** The editor has focus; the best keyboard proxy a browser offers. */
     focused: boolean;
     /** A MobileOverlayPanel is mounted in the shared portal root. */
@@ -76,6 +83,7 @@ export function useMobileComposerShell(
     const { isMobile, editorRef, formRef, setExpandedInput, holders, alwaysExpanded = false } = options;
 
     const [expanded, setExpanded] = React.useState(alwaysExpanded && isMobile);
+    const [everMounted, setEverMounted] = React.useState(alwaysExpanded && isMobile);
     const [focused, setFocused] = React.useState(false);
     const [overlayHostBusy, setOverlayHostBusy] = React.useState(false);
     const [dictationActive, setDictationActive] = React.useState(false);
@@ -130,7 +138,14 @@ export function useMobileComposerShell(
         // gesture's call stack: mobile browsers only open the soft keyboard for
         // focus calls made synchronously from the tap (an rAF here worked in
         // the Capacitor WebView but not in Safari or Chrome).
-        flushSync(() => setExpanded(true));
+        //
+        // everMounted commits in the same flush: from the first expansion the
+        // full composer stays mounted and this focus() targets the live editor
+        // instead of a freshly created one.
+        flushSync(() => {
+            setExpanded(true);
+            setEverMounted(true);
+        });
 
         if (isCapacitorApp()) {
             // Timing tuned on device, against WKWebView pausing frame
@@ -165,7 +180,10 @@ export function useMobileComposerShell(
             expandIntentRef.current = null;
             // Dictation went live, possibly from the pill: switch straight into
             // the voice variant of the full composer.
-            if (!expandedRef.current) setExpanded(true);
+            if (!expandedRef.current) {
+                setExpanded(true);
+                setEverMounted(true);
+            }
             return;
         }
         // Dictation ended. The insert flow hands focus back a tick later — if
@@ -447,6 +465,7 @@ export function useMobileComposerShell(
 
     return {
         expanded,
+        everMounted,
         focused,
         overlayHostBusy,
         dictationActive,

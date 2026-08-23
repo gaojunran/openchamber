@@ -2629,6 +2629,204 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         };
     }, []);
 
+    // The full composer (goal row, suggestion chip, drop zone, autocomplete
+    // popups, editor, footer). Shared by the desktop branch and the mobile
+    // always-mounted branch below so the two render identical content. The
+    // elements are component calls, not hooks, so rendering one copy of this
+    // variable in a single branch keeps hook order intact.
+    const fullComposer = (
+        <>
+            <SessionGoalRow
+                sessionId={currentSessionId}
+                directory={currentSessionDirectoryForSync ?? currentDirectory}
+                className="mb-1.5"
+            />
+            <SessionSuggestionChip
+                sessionId={currentSessionId}
+                directory={currentSessionDirectoryForSync ?? currentDirectory}
+                hidden={hasContent || newSessionDraftOpen}
+                onApply={applyAssistSuggestion}
+                className="mb-1.5"
+            />
+            <div
+                className={cn(
+                    "flex flex-col relative overflow-visible",
+                    isComposerExpanded && 'flex-1 min-h-0',
+                    "border border-border/80",
+                    "shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]",
+                    "focus-within:ring-1",
+                    inputMode === 'shell'
+                        ? 'focus-within:ring-[var(--status-info)]'
+                        : 'focus-within:ring-primary/50',
+                    isDragging && "ring-2 ring-primary ring-offset-2"
+                )}
+                style={{
+                    borderRadius: chatInputRadius,
+                    backgroundColor: currentTheme?.colors?.surface?.subtle,
+                }}
+                ref={dropZoneRef}
+                onDropCapture={handleDropCapture}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onDragEnd={handleDragEnd}
+            >
+                {isDragging && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 rounded-xl">
+                        <div className="text-center">
+                            <div className="inline-flex justify-center">
+                                <button
+                                    type="button"
+                                    className={iconButtonBaseClass}
+                                    onClick={() => handlePickLocalFiles()}
+                                    title={t('chat.chatInput.actions.attachFiles')}
+                                    aria-label={t('chat.chatInput.actions.attachFiles')}
+                                >
+                                    <Icon name="attachment-2" className={cn(iconSizeClass, 'text-current')} />
+                                </button>
+                            </div>
+                            <p className="mt-2 typography-ui-label text-muted-foreground">
+                                {isInternalDrag ? t('chat.chatInput.drop.insertMention') : t('chat.chatInput.drop.attachFiles')}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                <ComposerAutocompletePopups
+                    open={openAutocomplete}
+                    query={autocompleteQuery}
+                    overlayPosition={isDesktopExpanded ? autocompleteOverlayPosition : null}
+                    commandRef={commandRef}
+                    skillRef={skillRef}
+                    snippetRef={snippetRef}
+                    mentionRef={mentionRef}
+                    onCommandSelect={handleCommandSelect}
+                    onSkillSelect={handleSkillSelect}
+                    onSnippetSelect={handleSnippetSelect}
+                    onFileSelect={handleFileSelect}
+                    onAgentSelect={handleAgentSelect}
+                    onClose={closeAutocomplete}
+                />
+                {/* Positioning context for the dictation overlay: covers the
+                    text area + footer exactly. */}
+                <div className={cn('relative flex flex-col', isComposerExpanded && 'flex-1 min-h-0')}>
+                <div className={cn("overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}>
+                    {isMobile ? (
+                        <div className="scrollbar-none relative z-10 flex items-center gap-x-2 overflow-x-auto px-3 pb-0.5 pt-1.5">
+                            <MemoMobileModelButton onOpenModel={() => handleOpenMobilePanel('model')} className="flex-shrink-0" />
+                            <MemoMobileAgentButton
+                                onOpenAgentPanel={handleOpenAgentPanel}
+                                onCycleAgent={handleCycleAgent}
+                                className="flex-shrink-0"
+                            />
+                        </div>
+                    ) : null}
+                    <div className="flex items-center gap-1 px-3 pt-1 flex-wrap relative z-10">
+                        <AttachedVSCodeFileChips onShowPopup={handleShowAttachmentPreview} />
+                        <ActiveEditorFileSuggestion />
+                    </div>
+                    <div
+                        className={cn("relative overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}
+                        onDragEnter={handleDragEnter}
+                        onDragOver={handleDragOver}
+                        onDropCapture={handleDropCapture}
+                        onDrop={handleDrop}
+                        onDragEnd={handleDragEnd}
+                        style={dictationContentHeight !== null
+                            ? { minHeight: `${dictationContentHeight}px` }
+                            : undefined}
+                    >
+                        <ComposerEditor
+                            ref={composerRef}
+                            viewStore={composerViewStore}
+                            data-testid="chat-input"
+                            value={message}
+                            languageContext={languageContext}
+                            onChange={handleComposerChange}
+                            onKeyDown={(event) => {
+                                // Every interception branch calls
+                                // preventDefault, so the event itself
+                                // reports whether the composer consumed it.
+                                handleKeyDown(event);
+                                return event.defaultPrevented;
+                            }}
+                            onPaste={handlePaste}
+                            onSelectionChange={(selection) => {
+                                cursorPosRef.current = selection.start;
+                                updateAutocompleteOverlayPosition();
+                            }}
+                            onFocus={mobileShell.onEditorFocus}
+                            onBlur={mobileShell.onEditorBlur}
+                            placeholder={isBtwActive
+                                ? t('chat.btw.mainComposerPlaceholder')
+                                : currentSessionId || newSessionDraftOpen
+                                    ? inputMode === 'shell'
+                                        ? t('chat.chatInput.placeholder.shell')
+                                        : t(useCompactChatPlaceholder ? 'chat.chatInput.placeholder.chatCompact' : 'chat.chatInput.placeholder.chat')
+                                    : t('chat.chatInput.placeholder.selectSession')}
+                            editable={Boolean(currentSessionId || newSessionDraftOpen)}
+                            autoCorrect={isMobile}
+                            autoCapitalize={isMobile ? 'sentences' : 'none'}
+                            spellCheck={isMobile || inputSpellcheckEnabled}
+                            fillContainer={isComposerExpanded}
+                            maxLines={isMobile ? MAX_MOBILE_COMPOSER_LINES : MAX_VISIBLE_COMPOSER_LINES}
+                            boundSelector={isMobile ? '[data-composer-bound]' : undefined}
+                            boundGapPx={MOBILE_COMPOSER_BOUND_GAP_PX}
+                            className={cn(
+                                'min-h-[52px] px-3 relative z-10',
+                                isComposerExpanded
+                                    ? cn('h-full min-h-0', isMobile ? 'py-2.5' : 'py-4')
+                                    : isMobile
+                                        ? 'py-2.5'
+                                        : 'pt-4 pb-2',
+                                inputMode === 'shell' ? 'font-mono' : 'typography-markdown md:typography-ui-label',
+                            )}
+                        />
+                    </div>
+                </div>
+                <ComposerFooter
+                    isMobile={isMobile}
+                    isVSCode={isVSCode}
+                    sessionId={currentSessionId}
+                    directory={currentSessionDirectoryForSync ?? currentDirectory}
+                    newSessionDraftOpen={newSessionDraftOpen}
+                    messageLength={message.length}
+                    radius={chatInputRadius}
+                    footerPaddingClass={footerPaddingClass}
+                    footerGapClass={footerGapClass}
+                    footerIconButtonClass={footerIconButtonClass}
+                    iconSizeClass={iconSizeClass}
+                    sendIconSizeClass={sendIconSizeClass}
+                    stopIconSizeClass={stopIconSizeClass}
+                    canSend={canSend}
+                    canAbort={canAbort}
+                    hasContent={Boolean(hasContent)}
+                    isExpandedInput={isExpandedInput}
+                    permissionAutoAcceptEnabled={permissionAutoAcceptEnabled}
+                    isPermissionAutoAcceptInteractive={isPermissionAutoAcceptInteractive}
+                    dictationActive={mobileShell.dictationActive}
+                    onOpenSettings={onOpenSettings}
+                    onPickLocalFiles={handlePickLocalFiles}
+                    onOpenIssuePicker={openIssuePicker}
+                    onOpenPrPicker={openPrPicker}
+                    onOpenAttachSheet={openMobileAttachSheet}
+                    onToggleExpandedInput={handleToggleExpandedInput}
+                    onTogglePermissionAutoAccept={handlePermissionAutoAcceptToggle}
+                    onPrimaryAction={handlePrimaryAction}
+                    onQueueMessage={handleQueueMessage}
+                    onAbort={handleAbort}
+                    onStartDictation={toggleDictation}
+                    onDictationInsert={handleDictationInsert}
+                    onDictationInsertAndSend={handleDictationInsertAndSend}
+                    onDictationContentHeightChange={handleDictationContentHeightChange}
+                />
+                </div>
+
+            </div>
+        </>
+    );
+
     return (
         <>
         <form
@@ -2750,221 +2948,42 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         isMobileExpanded && 'flex min-h-0 flex-1 flex-col',
                     )}
                 >
-                {isMobile && !mobileComposerExpanded ? (
-                    <MobilePillComposer
-                        message={message}
-                        sessionId={currentSessionId}
-                        directory={currentSessionDirectoryForSync ?? currentDirectory}
-                        newSessionDraftOpen={newSessionDraftOpen}
-                        hasContent={Boolean(hasContent)}
-                        isVSCode={isVSCode}
-                        canAbort={canAbort}
-                        footerIconButtonClass={footerIconButtonClass}
-                        iconSizeClass={iconSizeClass}
-                        stopIconSizeClass={stopIconSizeClass}
-                        theme={currentTheme}
-                        onExpand={mobileShell.expand}
-                        onApplySuggestion={applyAssistSuggestion}
-                        onNewSession={handleMobileNewSession}
-                        onPickLocalFiles={handlePickLocalFiles}
-                        onOpenIssuePicker={openIssuePicker}
-                        onOpenPrPicker={openPrPicker}
-                        onOpenAttachSheet={openMobileAttachSheet}
-                        onStartDictation={toggleDictation}
-                        onAbort={handleAbort}
-                    />
-                ) : (
-                <>
-                <SessionGoalRow
-                    sessionId={currentSessionId}
-                    directory={currentSessionDirectoryForSync ?? currentDirectory}
-                    className="mb-1.5"
-                />
-                <SessionSuggestionChip
-                    sessionId={currentSessionId}
-                    directory={currentSessionDirectoryForSync ?? currentDirectory}
-                    hidden={hasContent || newSessionDraftOpen}
-                    onApply={applyAssistSuggestion}
-                    className="mb-1.5"
-                />
-                <div
-                    className={cn(
-                        "flex flex-col relative overflow-visible",
-                        isComposerExpanded && 'flex-1 min-h-0',
-                        "border border-border/80",
-                        "shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]",
-                        "focus-within:ring-1",
-                        inputMode === 'shell'
-                            ? 'focus-within:ring-[var(--status-info)]'
-                            : 'focus-within:ring-primary/50',
-                        isDragging && "ring-2 ring-primary ring-offset-2"
-                    )}
-                    style={{
-                        borderRadius: chatInputRadius,
-                        backgroundColor: currentTheme?.colors?.surface?.subtle,
-                    }}
-                    ref={dropZoneRef}
-                    onDropCapture={handleDropCapture}
-                    onDragEnter={handleDragEnter}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onDragEnd={handleDragEnd}
-                >
-                    {isDragging && (
-                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 rounded-xl">
-                            <div className="text-center">
-                                <div className="inline-flex justify-center">
-                                    <button
-                                        type="button"
-                                        className={iconButtonBaseClass}
-                                        onClick={() => handlePickLocalFiles()}
-                                        title={t('chat.chatInput.actions.attachFiles')}
-                                        aria-label={t('chat.chatInput.actions.attachFiles')}
-                                    >
-                                        <Icon name="attachment-2" className={cn(iconSizeClass, 'text-current')} />
-                                    </button>
-                                </div>
-                                <p className="mt-2 typography-ui-label text-muted-foreground">
-                                    {isInternalDrag ? t('chat.chatInput.drop.insertMention') : t('chat.chatInput.drop.attachFiles')}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    <ComposerAutocompletePopups
-                        open={openAutocomplete}
-                        query={autocompleteQuery}
-                        overlayPosition={isDesktopExpanded ? autocompleteOverlayPosition : null}
-                        commandRef={commandRef}
-                        skillRef={skillRef}
-                        snippetRef={snippetRef}
-                        mentionRef={mentionRef}
-                        onCommandSelect={handleCommandSelect}
-                        onSkillSelect={handleSkillSelect}
-                        onSnippetSelect={handleSnippetSelect}
-                        onFileSelect={handleFileSelect}
-                        onAgentSelect={handleAgentSelect}
-                        onClose={closeAutocomplete}
-                    />
-                    {/* Positioning context for the dictation overlay: covers the
-                        text area + footer exactly. */}
-                    <div className={cn('relative flex flex-col', isComposerExpanded && 'flex-1 min-h-0')}>
-                    <div className={cn("overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}>
-                        {isMobile ? (
-                            <div className="scrollbar-none relative z-10 flex items-center gap-x-2 overflow-x-auto px-3 pb-0.5 pt-1.5">
-                                <MemoMobileModelButton onOpenModel={() => handleOpenMobilePanel('model')} className="flex-shrink-0" />
-                                <MemoMobileAgentButton
-                                    onOpenAgentPanel={handleOpenAgentPanel}
-                                    onCycleAgent={handleCycleAgent}
-                                    className="flex-shrink-0"
-                                />
+                {isMobile ? (
+                    <>
+                        {!mobileComposerExpanded ? (
+                            <MobilePillComposer
+                                message={message}
+                                sessionId={currentSessionId}
+                                directory={currentSessionDirectoryForSync ?? currentDirectory}
+                                newSessionDraftOpen={newSessionDraftOpen}
+                                hasContent={Boolean(hasContent)}
+                                isVSCode={isVSCode}
+                                canAbort={canAbort}
+                                footerIconButtonClass={footerIconButtonClass}
+                                iconSizeClass={iconSizeClass}
+                                stopIconSizeClass={stopIconSizeClass}
+                                theme={currentTheme}
+                                onExpand={mobileShell.expand}
+                                onApplySuggestion={applyAssistSuggestion}
+                                onNewSession={handleMobileNewSession}
+                                onPickLocalFiles={handlePickLocalFiles}
+                                onOpenIssuePicker={openIssuePicker}
+                                onOpenPrPicker={openPrPicker}
+                                onOpenAttachSheet={openMobileAttachSheet}
+                                onStartDictation={toggleDictation}
+                                onAbort={handleAbort}
+                            />
+                        ) : null}
+                        {mobileShell.everMounted || mobileComposerExpanded ? (
+                            <div className={cn(
+                                !mobileComposerExpanded && 'hidden',
+                                isMobileExpanded && 'flex min-h-0 flex-1 flex-col',
+                            )}>
+                                {fullComposer}
                             </div>
                         ) : null}
-                        <div className="flex items-center gap-1 px-3 pt-1 flex-wrap relative z-10">
-                            <AttachedVSCodeFileChips onShowPopup={handleShowAttachmentPreview} />
-                            <ActiveEditorFileSuggestion />
-                        </div>
-                        <div
-                            className={cn("relative overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}
-                            onDragEnter={handleDragEnter}
-                            onDragOver={handleDragOver}
-                            onDropCapture={handleDropCapture}
-                            onDrop={handleDrop}
-                            onDragEnd={handleDragEnd}
-                            style={dictationContentHeight !== null
-                                ? { minHeight: `${dictationContentHeight}px` }
-                                : undefined}
-                        >
-                            <ComposerEditor
-                                ref={composerRef}
-                                viewStore={composerViewStore}
-                                data-testid="chat-input"
-                                value={message}
-                                languageContext={languageContext}
-                                onChange={handleComposerChange}
-                                onKeyDown={(event) => {
-                                    // Every interception branch calls
-                                    // preventDefault, so the event itself
-                                    // reports whether the composer consumed it.
-                                    handleKeyDown(event);
-                                    return event.defaultPrevented;
-                                }}
-                                onPaste={handlePaste}
-                                onSelectionChange={(selection) => {
-                                    cursorPosRef.current = selection.start;
-                                    updateAutocompleteOverlayPosition();
-                                }}
-                                onFocus={mobileShell.onEditorFocus}
-                                onBlur={mobileShell.onEditorBlur}
-                                placeholder={isBtwActive
-                                    ? t('chat.btw.mainComposerPlaceholder')
-                                    : currentSessionId || newSessionDraftOpen
-                                        ? inputMode === 'shell'
-                                            ? t('chat.chatInput.placeholder.shell')
-                                            : t(useCompactChatPlaceholder ? 'chat.chatInput.placeholder.chatCompact' : 'chat.chatInput.placeholder.chat')
-                                        : t('chat.chatInput.placeholder.selectSession')}
-                                editable={Boolean(currentSessionId || newSessionDraftOpen)}
-                                autoCorrect={isMobile}
-                                autoCapitalize={isMobile ? 'sentences' : 'none'}
-                                spellCheck={isMobile || inputSpellcheckEnabled}
-                                fillContainer={isComposerExpanded}
-                                maxLines={isMobile ? MAX_MOBILE_COMPOSER_LINES : MAX_VISIBLE_COMPOSER_LINES}
-                                boundSelector={isMobile ? '[data-composer-bound]' : undefined}
-                                boundGapPx={MOBILE_COMPOSER_BOUND_GAP_PX}
-                                className={cn(
-                                    'min-h-[52px] px-3 relative z-10',
-                                    isComposerExpanded
-                                        ? cn('h-full min-h-0', isMobile ? 'py-2.5' : 'py-4')
-                                        : isMobile
-                                            ? 'py-2.5'
-                                            : 'pt-4 pb-2',
-                                    inputMode === 'shell' ? 'font-mono' : 'typography-markdown md:typography-ui-label',
-                                )}
-                            />
-                        </div>
-                    </div>
-                    <ComposerFooter
-                        isMobile={isMobile}
-                        isVSCode={isVSCode}
-                        sessionId={currentSessionId}
-                        directory={currentSessionDirectoryForSync ?? currentDirectory}
-                        newSessionDraftOpen={newSessionDraftOpen}
-                        messageLength={message.length}
-                        radius={chatInputRadius}
-                        footerPaddingClass={footerPaddingClass}
-                        footerGapClass={footerGapClass}
-                        footerIconButtonClass={footerIconButtonClass}
-                        iconSizeClass={iconSizeClass}
-                        sendIconSizeClass={sendIconSizeClass}
-                        stopIconSizeClass={stopIconSizeClass}
-                        canSend={canSend}
-                        canAbort={canAbort}
-                        hasContent={Boolean(hasContent)}
-                        isExpandedInput={isExpandedInput}
-                        permissionAutoAcceptEnabled={permissionAutoAcceptEnabled}
-                        isPermissionAutoAcceptInteractive={isPermissionAutoAcceptInteractive}
-                        dictationActive={mobileShell.dictationActive}
-                        onOpenSettings={onOpenSettings}
-                        onPickLocalFiles={handlePickLocalFiles}
-                        onOpenIssuePicker={openIssuePicker}
-                        onOpenPrPicker={openPrPicker}
-                        onOpenAttachSheet={openMobileAttachSheet}
-                        onToggleExpandedInput={handleToggleExpandedInput}
-                        onTogglePermissionAutoAccept={handlePermissionAutoAcceptToggle}
-                        onPrimaryAction={handlePrimaryAction}
-                        onQueueMessage={handleQueueMessage}
-                        onAbort={handleAbort}
-                        onStartDictation={toggleDictation}
-                        onDictationInsert={handleDictationInsert}
-                        onDictationInsertAndSend={handleDictationInsertAndSend}
-                        onDictationContentHeightChange={handleDictationContentHeightChange}
-                    />
-                    </div>
-
-                </div>
-                </>
-                )}
+                    </>
+                ) : fullComposer}
                 {/* Wrapper-level dictation engine + overlay: stays mounted across
                     the pill ↔ composer swap so a recording started from the pill
                     survives the morph. Its absolute overlay covers whichever
