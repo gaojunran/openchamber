@@ -1,7 +1,7 @@
 import { isMacOS } from '@/lib/utils';
 import { isDesktopShell } from '@/lib/desktop';
 
-type ShortcutModifier = 'mod' | 'shift' | 'alt' | 'option' | 'ctrl';
+export type ShortcutModifier = 'mod' | 'shift' | 'alt' | 'option' | 'ctrl';
 type ShortcutKey = string;
 export type ShortcutCombo = string;
 
@@ -401,7 +401,7 @@ function isValidShortcutCombo(combo: ShortcutCombo): boolean {
   return parsed.key.trim().length > 0;
 }
 
-function parseShortcut(combo: ShortcutCombo): ParsedShortcut {
+export function parseShortcut(combo: ShortcutCombo): ParsedShortcut {
   if (isUnassignedShortcut(combo)) {
     return { modifiers: new Set<ShortcutModifier>(), key: UNASSIGNED_SHORTCUT };
   }
@@ -565,6 +565,28 @@ export function eventMatchesShortcut(
   const expectedKey = keyToShortcutToken(parsed.key);
 
   return eventKey === expectedKey;
+}
+
+/**
+ * True when the given modifier is currently held for a keyboard event. `mod`
+ * expands per platform: meta on desktop macOS, meta or ctrl on web macOS, ctrl
+ * everywhere else, matching the modifier logic in `eventMatchesShortcut`.
+ */
+export function isShortcutModifierHeld(event: KeyboardEvent, modifier: ShortcutModifier): boolean {
+  switch (modifier) {
+    case 'shift':
+      return event.shiftKey;
+    case 'alt':
+    case 'option':
+      return event.altKey;
+    case 'ctrl':
+      return event.ctrlKey;
+    case 'mod': {
+      const isDesktopMac = isMacOS() && isDesktopShell();
+      const isMac = isMacOS();
+      return isDesktopMac ? event.metaKey : isMac ? event.metaKey || event.ctrlKey : event.ctrlKey;
+    }
+  }
 }
 
 export function getModifierLabel(): string {

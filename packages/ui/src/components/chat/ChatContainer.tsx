@@ -1021,6 +1021,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 }
 
                 event.preventDefault();
+                useUIStore.getState().setPromptNavigatorHoldOpen(true);
                 void navigation.scrollByTurnOffset(isPrevMessageShortcut ? -1 : 1, { resumePastEnd: false });
                 return;
             }

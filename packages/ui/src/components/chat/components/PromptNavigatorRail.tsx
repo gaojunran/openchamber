@@ -5,6 +5,12 @@ import { Icon } from '@/components/icon/Icon';
 import { useI18n } from '@/lib/i18n';
 import { useUIStore } from '@/stores/useUIStore';
 import { cn } from '@/lib/utils';
+import {
+    getEffectiveShortcutCombo,
+    isShortcutModifierHeld,
+    parseShortcut,
+    type ShortcutModifier,
+} from '@/lib/shortcuts';
 import { getMessagePreview } from '../lib/messagePreview';
 
 type PromptEntry = {
@@ -97,11 +103,31 @@ export function PromptNavigatorRail({
     const { t } = useI18n();
     const isKeyboardNavOpen = useUIStore((state) => state.isPromptNavigatorPanelOpen);
     const setPromptNavigatorPanelOpen = useUIStore((state) => state.setPromptNavigatorPanelOpen);
+    const isPromptNavigatorHoldOpen = useUIStore((state) => state.isPromptNavigatorHoldOpen);
+    const setPromptNavigatorHoldOpen = useUIStore((state) => state.setPromptNavigatorHoldOpen);
+    const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
     const gutterRef = React.useRef<HTMLDivElement | null>(null);
     const navRef = React.useRef<HTMLElement | null>(null);
     const [highlightedIndex, setHighlightedIndex] = React.useState<number | null>(null);
     const [windowStart, setWindowStart] = React.useState(0);
     const [isNarrowGutter, setIsNarrowGutter] = React.useState(false);
+
+    // Modifier sets of the jump shortcuts, resolved from the user's effective
+    // config. Actions whose combo carries no modifier don't participate in hold
+    // detection, so the feature degrades to never showing.
+    const holdModifierSets = React.useMemo(() => {
+        const sets: ShortcutModifier[][] = [];
+        for (const actionId of ['jump_prev_user_message', 'jump_next_user_message'] as const) {
+            const combo = getEffectiveShortcutCombo(actionId, shortcutOverrides);
+            const modifiers = parseShortcut(combo).modifiers;
+            if (modifiers.size > 0) {
+                sets.push([...modifiers]);
+            }
+        }
+        return sets;
+    }, [shortcutOverrides]);
+    const holdModifierSetsRef = React.useRef(holdModifierSets);
+    holdModifierSetsRef.current = holdModifierSets;
 
     // Shrink the hit zone whenever the message column reaches under the
     // full-width gutter, so bubble clicks (expand/collapse) stay clickable.
@@ -305,7 +331,53 @@ export function PromptNavigatorRail({
         }
     }, []);
 
+    // Hold mode: while the jump shortcut's modifiers are still held, the
+    // preview stays pinned to the active turn. Any keyup that leaves no
+    // modifier set fully held (and window blur) releases it. An empty set list
+    // means the user's effective combos carry no modifiers, so every keyup
+    // releases and the feature degrades to never showing.
+    React.useEffect(() => {
+        const releaseHold = () => setPromptNavigatorHoldOpen(false);
+
+        const handleKeyUp = (event: KeyboardEvent) => {
+            const heldSets = holdModifierSetsRef.current;
+            const anySetFullyHeld = heldSets.some((modifiers) =>
+                modifiers.every((modifier) => isShortcutModifierHeld(event, modifier)),
+            );
+            if (!anySetFullyHeld) {
+                releaseHold();
+            }
+        };
+
+        window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('blur', releaseHold);
+        return () => {
+            window.removeEventListener('keyup', handleKeyUp);
+            window.removeEventListener('blur', releaseHold);
+        };
+    }, [setPromptNavigatorHoldOpen]);
+
+    React.useEffect(() => {
+        if (!isPromptNavigatorHoldOpen || activeIndex < 0) {
+            return;
+        }
+        cancelScheduledHide();
+        ensureWindowContains(activeIndex);
+        setHighlightedIndex(activeIndex);
+    }, [activeIndex, cancelScheduledHide, ensureWindowContains, isPromptNavigatorHoldOpen]);
+
+    // When hold mode ends without the pointer over the gutter, drop the
+    // highlight so the panel collapses.
+    React.useEffect(() => {
+        if (!isPromptNavigatorHoldOpen && pointerYRef.current === null) {
+            setHighlightedIndex(null);
+        }
+    }, [isPromptNavigatorHoldOpen]);
+
     const handlePointerMove = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        if (isPromptNavigatorHoldOpen) {
+            return;
+        }
         cancelScheduledHide();
         pointerYRef.current = event.clientY;
         const relative = relativeIndexFromPointer(event.clientY);
@@ -315,13 +387,16 @@ export function PromptNavigatorRail({
             );
         }
         updateCarousel(event.clientY);
-    }, [cancelScheduledHide, relativeIndexFromPointer, updateCarousel]);
+    }, [cancelScheduledHide, isPromptNavigatorHoldOpen, relativeIndexFromPointer, updateCarousel]);
 
     const handlePointerLeave = React.useCallback(() => {
+        if (isPromptNavigatorHoldOpen) {
+            return;
+        }
         pointerYRef.current = null;
         stopCarousel();
         scheduleHide();
-    }, [scheduleHide, stopCarousel]);
+    }, [isPromptNavigatorHoldOpen, scheduleHide, stopCarousel]);
 
     const closeKeyboardNav = React.useCallback(() => {
         setPromptNavigatorPanelOpen(false);
@@ -371,9 +446,16 @@ export function PromptNavigatorRail({
         });
     }, [activeIndex, ensureWindowContains, isKeyboardNavOpen, prompts.length]);
 
-    React.useEffect(() => () => {
-        setPromptNavigatorPanelOpen(false);
-    }, [setPromptNavigatorPanelOpen]);
+    // Reset hold state on mount and unmount: the jump shortcut sets the flag in
+    // ChatContainer regardless of whether this rail is mounted, so a stale true
+    // would otherwise pop the preview open when the rail appears later.
+    React.useEffect(() => {
+        setPromptNavigatorHoldOpen(false);
+        return () => {
+            setPromptNavigatorPanelOpen(false);
+            setPromptNavigatorHoldOpen(false);
+        };
+    }, [setPromptNavigatorHoldOpen, setPromptNavigatorPanelOpen]);
 
     const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
         if (prompts.length === 0) {

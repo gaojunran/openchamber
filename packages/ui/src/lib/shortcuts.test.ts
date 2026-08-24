@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   eventMatchesShortcutPrefix,
   getEffectiveShortcutPrefix,
+  isShortcutModifierHeld,
   isShortcutPrefixHeld,
   UNASSIGNED_SHORTCUT,
 } from './shortcuts';
@@ -76,5 +77,26 @@ describe('eventMatchesShortcutPrefix', () => {
 
   test('false for an unassigned prefix', () => {
     expect(eventMatchesShortcutPrefix(keydown('1', { ctrl: true }), UNASSIGNED_SHORTCUT)).toBe(false);
+  });
+});
+
+describe('isShortcutModifierHeld', () => {
+  test('reports plain modifiers from event state', () => {
+    const event = keydown('PageUp', { shift: true });
+    expect(isShortcutModifierHeld(event, 'shift')).toBe(true);
+    expect(isShortcutModifierHeld(event, 'alt')).toBe(false);
+    expect(isShortcutModifierHeld(event, 'ctrl')).toBe(false);
+  });
+
+  test('maps option to alt', () => {
+    const event = keydown('PageUp', { alt: true });
+    expect(isShortcutModifierHeld(event, 'option')).toBe(true);
+    expect(isShortcutModifierHeld(event, 'alt')).toBe(true);
+  });
+
+  test('requires the modifier to be held', () => {
+    const event = keydown('PageUp', {});
+    expect(isShortcutModifierHeld(event, 'shift')).toBe(false);
+    expect(isShortcutModifierHeld(event, 'ctrl')).toBe(false);
   });
 });

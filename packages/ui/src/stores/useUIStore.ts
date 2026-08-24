@@ -748,6 +748,7 @@ interface UIStore {
   gitChangesViewMode: 'flat' | 'tree';
   isTimelineDialogOpen: boolean;
   isPromptNavigatorPanelOpen: boolean;
+  isPromptNavigatorHoldOpen: boolean;
   isImagePreviewOpen: boolean;
   nativeNotificationsEnabled: boolean;
   notificationMode: 'always' | 'hidden-only';
@@ -951,6 +952,7 @@ interface UIStore {
   setMultiRunLauncherOpen: (open: boolean) => void;
   setTimelineDialogOpen: (open: boolean) => void;
   setPromptNavigatorPanelOpen: (open: boolean) => void;
+  setPromptNavigatorHoldOpen: (open: boolean) => void;
   togglePromptNavigatorPanel: () => void;
   setImagePreviewOpen: (open: boolean) => void;
   setNativeNotificationsEnabled: (value: boolean) => void;
@@ -1110,6 +1112,7 @@ export const useUIStore = create<UIStore>()(
         gitChangesViewMode: 'flat',
         isTimelineDialogOpen: false,
         isPromptNavigatorPanelOpen: false,
+        isPromptNavigatorHoldOpen: false,
         isImagePreviewOpen: false,
         nativeNotificationsEnabled: false,
         notificationMode: 'hidden-only',
@@ -2317,6 +2320,10 @@ export const useUIStore = create<UIStore>()(
 
         setPromptNavigatorPanelOpen: (open) => {
           set({ isPromptNavigatorPanelOpen: open });
+        },
+
+        setPromptNavigatorHoldOpen: (open) => {
+          set({ isPromptNavigatorHoldOpen: open });
         },
 
         togglePromptNavigatorPanel: () => {
