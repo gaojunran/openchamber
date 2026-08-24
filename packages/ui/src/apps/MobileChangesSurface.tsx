@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from '@/components/icon/Icon';
+import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 
 import { toast } from '@/components/ui';
 import { Button } from '@/components/ui/button';
@@ -8,10 +9,11 @@ import { ChangesPanel, type ChangesGroupConfig } from '@/components/views/git/Ch
 import { CommitSection } from '@/components/views/git/CommitSection';
 import { SyncActions } from '@/components/views/git/SyncActions';
 import { PierreDiffViewer } from '@/components/views/PierreDiffViewer';
+import { useMobileBranchDiffScope, type UseMobileBranchDiffScopeResult } from '@/hooks/useMobileBranchDiffScope';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import type { GitStatus } from '@/lib/api/types';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, type I18nKey } from '@/lib/i18n';
 import { generateCommitMessage, stageGitFile, stageGitFiles, unstageGitFile, unstageGitFiles } from '@/lib/gitApi';
 import type { GitRemote } from '@/lib/gitApi';
 import { getLanguageFromExtension, isImageFile } from '@/lib/toolHelpers';
@@ -22,6 +24,7 @@ import {
   useGitLoadingStatus,
 } from '@/stores/useGitStore';
 import { getRuntimeKey } from '@/lib/runtime-switch';
+import { cn } from '@/lib/utils';
 
 type SyncAction = 'fetch' | 'pull' | 'push' | 'sync' | null;
 type CommitAction = 'commit' | 'commitAndPush' | null;
@@ -72,17 +75,60 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
     () => (initialDiffPath ? { type: 'diff', path: initialDiffPath, staged: initialDiffStaged } : { type: 'list' }),
   );
 
+  // Picks the data source: the working tree (staged/unstaged + commit/sync) or
+  // the current branch's range diff against its base. `route` stays the
+  // list-vs-detail navigation; a scope switch always lands on the new scope's
+  // list, and a stale branch diff must never survive a scope switch or a
+  // confirmed-unavailable branch scope (see the coercion effect below).
+  const [scope, setScope] = React.useState<'changes' | 'branch'>('changes');
+
   // Allow the host (MobileApp) to push us into a specific diff when the surface
   // is reopened or when an external trigger (e.g. PendingChangesBar tap) requests
-  // a different file mid-session.
+  // a different file mid-session. A pushed diff is always a working-tree diff.
   React.useEffect(() => {
     if (!initialDiffPath) return;
+    setScope('changes');
     setRoute((current) => (
       current.type === 'diff' && current.path === initialDiffPath && current.staged === initialDiffStaged
         ? current
         : { type: 'diff', path: initialDiffPath, staged: initialDiffStaged }
     ));
   }, [initialDiffPath, initialDiffStaged]);
+
+  const branchScope = useMobileBranchDiffScope({
+    directory: currentDirectory,
+    currentBranch: status?.current ?? null,
+    trackingRemote: status?.tracking ?? null,
+    isGitRepo,
+    isBranchStatusResolved: status !== null,
+    isEnabled: scope === 'branch',
+    activePath: scope === 'branch' && route.type === 'diff' ? route.path : null,
+  });
+
+  // Coercion only ever rewrites a CONFIRMED-unavailable branch scope; while
+  // metadata is still loading the persisted scope survives (the hook treats
+  // "default branch unknown" as not-yet-known, not unavailable). Rendering
+  // follows effectiveScope, so the frame already shows the Changes list; the
+  // effect then aligns the persisted state (scope + any stale diff route) in
+  // one commit so a branch diff can never survive the coercion.
+  const effectiveScope = scope === 'branch' && branchScope.branchScopeDefinitelyUnavailable ? 'changes' : scope;
+
+  React.useEffect(() => {
+    if (effectiveScope !== scope) {
+      setScope('changes');
+      setRoute({ type: 'list' });
+    }
+  }, [effectiveScope, scope]);
+
+  const handleScopeChange = React.useCallback((next: 'changes' | 'branch') => {
+    if (next === scope) return;
+    setScope(next);
+    setRoute({ type: 'list' });
+  }, [scope]);
+
+  const handleViewBranchDiff = React.useCallback((path: string) => {
+    setRoute({ type: 'diff', path, staged: false });
+  }, []);
   const [syncAction, setSyncAction] = React.useState<SyncAction>(null);
   const [commitAction, setCommitAction] = React.useState<CommitAction>(null);
   const [commitMessage, setCommitMessage] = React.useState('');
@@ -192,7 +238,7 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
   }, [changeEntries, currentDirectory, git, prefetchDiffs, stagedChangeEntries, visibleChangePaths]);
 
   React.useEffect(() => {
-    if (route.type !== 'diff') {
+    if (route.type !== 'diff' || scope === 'branch') {
       setDiffLoadError(null);
       return;
     }
@@ -222,7 +268,7 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
     return () => {
       cancelled = true;
     };
-  }, [currentDirectory, diffRetryNonce, getDiff, git, route, setDiff]);
+  }, [currentDirectory, diffRetryNonce, getDiff, git, route, scope, setDiff]);
 
   const handleSyncAction = async (action: Exclude<SyncAction, null>, remote?: GitRemote) => {
     if (!currentDirectory) return;
@@ -482,7 +528,20 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
     return renderListState(<MobileChangesState icon message={t('gitView.empty.notGitRepository')} description={t('gitView.empty.notGitRepositoryDescription')} />);
   }
 
-  if (route.type === 'diff') {
+  if (route.type === 'diff' && scope === effectiveScope) {
+    // The scope check guards the one-render window where a confirmed-
+    // unavailable branch scope has not been rewritten by the coercion effect
+    // yet: a branch diff must never render a working-tree frame, and vice
+    // versa. It falls through to the (Changes) list below instead.
+    if (effectiveScope === 'branch') {
+      return (
+        <MobileBranchDiffDetail
+          path={route.path}
+          branchScope={branchScope}
+          onBack={() => setRoute({ type: 'list' })}
+        />
+      );
+    }
     return (
       <MobileDiffDetail
         path={route.path}
@@ -515,19 +574,28 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
             {status?.current || currentDirectory}
           </p>
         </div>
-        <SyncActions
-          syncAction={syncAction}
-          remotes={effectiveRemotes}
-          onFetch={(remote) => void handleSyncAction('fetch', remote)}
-          onSync={(remote) => void handleSyncAction('sync', remote)}
-          disabled={commitAction !== null || isLoadingStatus}
-          aheadCount={status?.ahead ?? 0}
-          behindCount={status?.behind ?? 0}
-          trackingRemoteName={status?.tracking?.split('/')[0]}
-          hasUncommittedChanges={changeEntries.length > 0}
-        />
+        {effectiveScope === 'changes' ? (
+          <SyncActions
+            syncAction={syncAction}
+            remotes={effectiveRemotes}
+            onFetch={(remote) => void handleSyncAction('fetch', remote)}
+            onSync={(remote) => void handleSyncAction('sync', remote)}
+            disabled={commitAction !== null || isLoadingStatus}
+            aheadCount={status?.ahead ?? 0}
+            behindCount={status?.behind ?? 0}
+            trackingRemoteName={status?.tracking?.split('/')[0]}
+            hasUncommittedChanges={changeEntries.length > 0}
+          />
+        ) : null}
       </header>
-      {changeEntries.length > 0 ? (
+      <MobileScopeSelector
+        scope={effectiveScope}
+        showBranchOption={branchScope.isBranchScopeAvailable}
+        onScopeChange={handleScopeChange}
+      />
+      {effectiveScope === 'branch' ? (
+        <MobileBranchFileList branchScope={branchScope} onSelectFile={handleViewBranchDiff} />
+      ) : changeEntries.length > 0 ? (
         <div className="flex min-h-0 flex-1 flex-col">
           {/* File list scrolls inside ChangesPanel; the commit footer stays pinned. */}
           <div className="min-h-0 flex-1 overflow-hidden px-4 pt-4">
@@ -642,6 +710,305 @@ const MobileDiffDetail: React.FC<{
               layout="inline"
             />
           </ScrollShadow>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * The "Changed" vs "Branch" mode switch for the mobile changes list. A centered
+ * pill keeps the header (title/subtitle/SyncActions) untouched and gives both
+ * segments 40px+ touch targets. The Branch segment only appears once the
+ * default branch is known and differs from the current one; while it is absent
+ * the control degrades to a single active segment instead of disappearing, so
+ * the row height never shifts.
+ */
+const MobileScopeSelector: React.FC<{
+  scope: 'changes' | 'branch';
+  showBranchOption: boolean;
+  onScopeChange: (scope: 'changes' | 'branch') => void;
+}> = ({ scope, showBranchOption, onScopeChange }) => {
+  const { t } = useI18n();
+
+  const renderSegment = (value: 'changes' | 'branch', label: string, icon?: 'git-branch') => {
+    const isActive = scope === value;
+    return (
+      <button
+        type="button"
+        aria-pressed={isActive}
+        onClick={() => onScopeChange(value)}
+        className={cn(
+          'flex h-10 min-w-16 items-center justify-center gap-1.5 rounded-lg px-3 typography-ui-label font-medium transition-colors',
+          isActive
+            ? 'bg-interactive-selection text-interactive-selection-foreground'
+            : 'text-muted-foreground hover:bg-interactive-hover hover:text-foreground'
+        )}
+        style={{ touchAction: 'manipulation' }}
+      >
+        {icon ? <Icon name={icon} className="size-4" /> : null}
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex shrink-0 justify-center border-b border-border/70 px-3 py-2">
+      <div
+        role="group"
+        aria-label={t('diffView.scope.selectorAria')}
+        className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-[var(--surface-elevated)] p-0.5"
+      >
+        {renderSegment('changes', t('diffView.scope.changed'))}
+        {showBranchOption ? renderSegment('branch', t('diffView.scope.branch'), 'git-branch') : null}
+      </div>
+    </div>
+  );
+};
+
+// Mirrors the desktop DiffView CHANGE_DESCRIPTORS colors for the range status
+// letters (A/M/D/R/C). The letter keeps the desktop's semantic color; the
+// label is localized. Unknown statuses read as modified, like the desktop's
+// default descriptor.
+type BranchChangeDescriptor = { code: string; color: string; labelKey: I18nKey };
+
+const describeBranchChange = (status: string): BranchChangeDescriptor => {
+  switch (status) {
+    case 'A':
+      return { code: 'A', color: 'var(--status-success)', labelKey: 'diffView.change.new' };
+    case 'M':
+      return { code: 'M', color: 'var(--status-warning)', labelKey: 'diffView.change.modified' };
+    case 'D':
+      return { code: 'D', color: 'var(--status-error)', labelKey: 'diffView.change.deleted' };
+    case 'R':
+      return { code: 'R', color: 'var(--status-info)', labelKey: 'diffView.change.renamed' };
+    case 'C':
+      return { code: 'C', color: 'var(--status-info)', labelKey: 'diffView.change.copied' };
+    default:
+      return { code: 'M', color: 'var(--status-warning)', labelKey: 'diffView.change.modified' };
+  }
+};
+
+/**
+ * The branch scope's list body, in desktop-mirroring priority order: base
+ * resolution spinner, base picker (search + candidates), branch-files error
+ * with retry, in-flight files spinner, empty state, then the read-only file
+ * list. Tapping a row opens the branch diff detail for that path.
+ */
+const MobileBranchFileList: React.FC<{
+  branchScope: UseMobileBranchDiffScopeResult;
+  onSelectFile: (path: string) => void;
+}> = ({ branchScope, onSelectFile }) => {
+  const { t } = useI18n();
+
+  // Every state fills the remaining body space below the header and the scope
+  // selector; `h-full` content inside a `min-h-0 flex-1` wrapper keeps the
+  // centering inside the visible body instead of the whole surface.
+  if (!branchScope.isBranchBaseResolved) {
+    return (
+      <div className="min-h-0 flex-1">
+        <MobileChangesState loading message={t('diffView.branch.resolvingBase')} />
+      </div>
+    );
+  }
+
+  const branchBase = branchScope.branchBase;
+  if (!branchBase) {
+    return (
+      <div className="min-h-0 flex-1">
+        <MobileBranchBasePicker branchScope={branchScope} />
+      </div>
+    );
+  }
+
+  if (branchScope.branchFilesError) {
+    return (
+      <div className="min-h-0 flex-1">
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.loadError')}</p>
+          <p className="max-w-sm typography-meta text-muted-foreground">{branchScope.branchFilesError}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => branchScope.reloadBranchFiles()}>
+            {t('diffView.actions.retry')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const branchFiles = branchScope.branchFiles;
+  if (branchFiles === null) {
+    return (
+      <div className="min-h-0 flex-1">
+        <MobileChangesState loading message={t('diffView.branch.loadingFiles')} />
+      </div>
+    );
+  }
+
+  if (branchFiles.length === 0) {
+    return (
+      <div className="min-h-0 flex-1">
+        <MobileChangesState icon message={t('diffView.branch.empty', { base: branchBase })} />
+      </div>
+    );
+  }
+
+  const sortedFiles = [...branchFiles].sort((a, b) => a.path.localeCompare(b.path));
+
+  return (
+    <div className="min-h-0 flex-1">
+      <ScrollShadow className="h-full overflow-y-auto overflow-x-hidden px-3 py-2">
+        <ul role="list" aria-label={t('gitView.changes.changedFilesAria')} className="flex flex-col gap-1">
+          {sortedFiles.map((file) => {
+            const descriptor = describeBranchChange(file.status);
+            return (
+              <li key={file.path}>
+                <button
+                  type="button"
+                  onClick={() => onSelectFile(file.path)}
+                  className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  <span
+                    className="typography-micro w-4 shrink-0 text-center font-semibold uppercase"
+                    style={{ color: descriptor.color }}
+                    aria-label={t(descriptor.labelKey)}
+                    title={t(descriptor.labelKey)}
+                  >
+                    {descriptor.code}
+                  </span>
+                  <FileTypeIcon filePath={file.path} className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate typography-ui-label text-foreground" title={file.path}>
+                    {file.path}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </ScrollShadow>
+    </div>
+  );
+};
+
+/**
+ * The base-branch picker shown when git cannot detect where the current branch
+ * started. Search narrows the candidate list (every known branch except the
+ * current one); picking one writes the override through the hook, which the
+ * surface never reads back directly — the hook resolves it into branchBase.
+ */
+const MobileBranchBasePicker: React.FC<{
+  branchScope: UseMobileBranchDiffScopeResult;
+}> = ({ branchScope }) => {
+  const { t } = useI18n();
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const normalizedTerm = searchTerm.trim().toLowerCase();
+  const candidates = branchScope.candidateBranches.filter(
+    (branch) => !normalizedTerm || branch.toLowerCase().includes(normalizedTerm),
+  );
+
+  return (
+    <ScrollShadow className="h-full overflow-y-auto">
+      <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col items-center gap-1 text-center">
+          <Icon name="git-branch" className="size-6 text-muted-foreground" />
+          <h3 className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.noBaseTitle')}</h3>
+          <p className="max-w-sm typography-micro text-muted-foreground">{t('diffView.branch.noBaseDescription')}</p>
+        </div>
+        <div className="relative">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder={t('gitView.branch.searchPlaceholder')}
+            aria-label={t('gitView.branch.searchPlaceholder')}
+            className="h-10 w-full rounded-md border border-border/60 bg-[var(--surface-elevated)] pl-9 pr-3 typography-ui-label text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
+          />
+        </div>
+        {candidates.length === 0 ? (
+          <p className="px-2 py-3 text-center typography-meta text-muted-foreground">{t('gitView.branch.empty')}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {candidates.map((branch) => (
+              <li key={branch}>
+                <button
+                  type="button"
+                  onClick={() => branchScope.setBaseOverride(branch)}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
+                  style={{ touchAction: 'manipulation' }}
+                >
+                  <Icon name="git-branch" className="size-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate typography-ui-label text-foreground" title={branch}>
+                    {branch}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </ScrollShadow>
+  );
+};
+
+/**
+ * The branch scope's per-file diff detail. Mirrors the working-tree
+ * MobileDiffDetail chrome (back button, scrolling wrapper) but renders from
+ * the hook's range-keyed cache instead of the working-tree diff cache: the
+ * diff is resolved per requested path, so this view is always a fresh fetch
+ * for the branch range (see the hook's activeFileDiff state machine).
+ */
+const MobileBranchDiffDetail: React.FC<{
+  path: string;
+  branchScope: UseMobileBranchDiffScopeResult;
+  onBack: () => void;
+}> = ({ path, branchScope, onBack }) => {
+  const { t } = useI18n();
+  const language = React.useMemo(() => getLanguageFromExtension(path) || 'text', [path]);
+  const fileDiffStatus = branchScope.activeFileDiff;
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-background text-foreground">
+      <header className="flex h-[var(--oc-header-height,56px)] shrink-0 items-center gap-3 border-b border-border/70 px-3 text-foreground">
+        <button
+          type="button"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={t('header.actions.backAria')}
+          onClick={onBack}
+        >
+          <Icon name="arrow-left" className="size-5" />
+        </button>
+        <div className="min-w-0 flex-1 px-2">
+          <h2 className="truncate typography-ui-header text-foreground">{path}</h2>
+        </div>
+      </header>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {fileDiffStatus.status === 'idle' || fileDiffStatus.status === 'loading' ? (
+          <MobileChangesState loading message={t('diffView.state.loadingDiff')} />
+        ) : fileDiffStatus.value.isBinary ? (
+          <MobileChangesState icon message={t('diffView.binary.unavailable')} />
+        ) : fileDiffStatus.value.fileDiff ? (
+          <ScrollShadow
+            className="h-full overflow-y-auto overflow-x-hidden p-3"
+            data-diff-virtual-root
+            data-diff-virtual-content
+          >
+            <PierreDiffViewer
+              original=""
+              modified=""
+              fileDiff={fileDiffStatus.value.fileDiff}
+              language={language}
+              fileName={path}
+              renderSideBySide={false}
+              wrapLines={true}
+              layout="inline"
+            />
+          </ScrollShadow>
+        ) : (
+          <MobileChangesState loading message={t('diffView.state.loadingDiff')} />
         )}
       </div>
     </div>
