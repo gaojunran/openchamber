@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **Diff: comment like a review.** Hovering a line shows a + button in the gutter; clicking it, clicking a line, or dragging across lines opens the comment editor for that line or range. The comment editor and saved-comment cards now match the chat's comment style.
 - Files: in a rendered markdown preview, select text and choose Comment to attach exactly that fragment (with a source line range when it can be located) plus your note to the next message.
 - Composer: hovering or tapping a context chip above the input opens a stacked preview of everything attached, where a comment can be edited in place or an item removed before sending.
+- Mobile: the Changes tab can now review everything on the current branch against its base, alongside the working-tree view — a read-only file list with add/modify/delete/rename/copy badges and per-file diffs. OpenChamber detects the base branch when Git knows it, or lets you choose one when it does not.
 - Mobile: the chat comment input overlays the composer exactly and rides the keyboard; Enter makes a new line there, with attach on the button.
 - Desktop: a freshly installed or updated build no longer keeps loading the previous version's interface from cache.
 - Chat: OpenCode notices now share one style.
