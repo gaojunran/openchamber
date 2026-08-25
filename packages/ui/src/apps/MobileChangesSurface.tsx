@@ -794,12 +794,56 @@ const describeBranchChange = (status: string): BranchChangeDescriptor => {
  * resolution spinner, base picker (search + candidates), branch-files error
  * with retry, in-flight files spinner, empty state, then the read-only file
  * list. Tapping a row opens the branch diff detail for that path.
+ *
+ * Once a base is resolved the list carries a pinned base row at the top; it is
+ * the always-visible entry into the change-base picker, including while the
+ * list is empty, errored, or reloading. Picking a new base must not flash the
+ * previous base's file list under the new base row, so the picker hand-off
+ * holds a local in-flight flag until the hook's range reload lands.
  */
 const MobileBranchFileList: React.FC<{
   branchScope: UseMobileBranchDiffScopeResult;
   onSelectFile: (path: string) => void;
 }> = ({ branchScope, onSelectFile }) => {
   const { t } = useI18n();
+  const [isBasePickerOpen, setIsBasePickerOpen] = React.useState(false);
+  // Holds the file-list area on the loading state between picking a new base
+  // and the hook publishing the new range's files. Without it one render would
+  // show the new base row above the previous base's file list.
+  const [baseChangeInFlight, setBaseChangeInFlight] = React.useState(false);
+  const sawRangeReloadRef = React.useRef(false);
+
+  // The hook clears and reloads branchFiles in an effect that runs AFTER this
+  // child's effect in the pick commit, so "files became non-null" alone cannot
+  // end the hold: the first non-null read is still the OLD base's list. Only a
+  // reload pass (files === null) proves the new range replaced it. An error
+  // also ends the hold; the error frame renders above the loading state.
+  React.useEffect(() => {
+    if (!baseChangeInFlight) {
+      sawRangeReloadRef.current = false;
+      return;
+    }
+    if (branchScope.branchFilesError) {
+      setBaseChangeInFlight(false);
+      return;
+    }
+    if (branchScope.branchFiles === null) {
+      sawRangeReloadRef.current = true;
+      return;
+    }
+    if (sawRangeReloadRef.current) {
+      setBaseChangeInFlight(false);
+    }
+  }, [baseChangeInFlight, branchScope.branchFiles, branchScope.branchFilesError]);
+
+  const handlePickBase = (branch: string) => {
+    const changed = branch !== branchScope.branchBase;
+    branchScope.setBaseOverride(branch);
+    setIsBasePickerOpen(false);
+    // Picking the current base keeps the list untouched; only a real change
+    // needs the loading hold.
+    if (changed) setBaseChangeInFlight(true);
+  };
 
   // Every state fills the remaining body space below the header and the scope
   // selector; `h-full` content inside a `min-h-0 flex-1` wrapper keeps the
@@ -814,48 +858,47 @@ const MobileBranchFileList: React.FC<{
 
   const branchBase = branchScope.branchBase;
   if (!branchBase) {
+    // No base at all: the fallback picker (no "current base" to return to).
     return (
       <div className="min-h-0 flex-1">
-        <MobileBranchBasePicker branchScope={branchScope} />
+        <MobileBranchBasePicker branchScope={branchScope} onPick={handlePickBase} />
       </div>
     );
   }
 
-  if (branchScope.branchFilesError) {
+  if (isBasePickerOpen) {
     return (
       <div className="min-h-0 flex-1">
-        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-          <p className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.loadError')}</p>
-          <p className="max-w-sm typography-meta text-muted-foreground">{branchScope.branchFilesError}</p>
-          <Button type="button" size="sm" variant="outline" onClick={() => branchScope.reloadBranchFiles()}>
-            {t('diffView.actions.retry')}
-          </Button>
-        </div>
+        <MobileBranchBasePicker
+          branchScope={branchScope}
+          onPick={handlePickBase}
+          onClose={() => setIsBasePickerOpen(false)}
+        />
       </div>
     );
   }
+
+  const showLoading = baseChangeInFlight || branchScope.branchFiles === null;
 
   const branchFiles = branchScope.branchFiles;
-  if (branchFiles === null) {
-    return (
-      <div className="min-h-0 flex-1">
-        <MobileChangesState loading message={t('diffView.branch.loadingFiles')} />
+  let content: React.ReactNode;
+  if (branchScope.branchFilesError) {
+    content = (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.loadError')}</p>
+        <p className="max-w-sm typography-meta text-muted-foreground">{branchScope.branchFilesError}</p>
+        <Button type="button" size="sm" variant="outline" onClick={() => branchScope.reloadBranchFiles()}>
+          {t('diffView.actions.retry')}
+        </Button>
       </div>
     );
-  }
-
-  if (branchFiles.length === 0) {
-    return (
-      <div className="min-h-0 flex-1">
-        <MobileChangesState icon message={t('diffView.branch.empty', { base: branchBase })} />
-      </div>
-    );
-  }
-
-  const sortedFiles = [...branchFiles].sort((a, b) => a.path.localeCompare(b.path));
-
-  return (
-    <div className="min-h-0 flex-1">
+  } else if (showLoading) {
+    content = <MobileChangesState loading message={t('diffView.branch.loadingFiles')} />;
+  } else if (branchFiles && branchFiles.length === 0) {
+    content = <MobileChangesState icon message={t('diffView.branch.empty', { base: branchBase })} />;
+  } else {
+    const sortedFiles = [...(branchFiles ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+    content = (
       <ScrollShadow className="h-full overflow-y-auto overflow-x-hidden px-3 py-2">
         <ul role="list" aria-label={t('gitView.changes.changedFilesAria')} className="flex flex-col gap-1">
           {sortedFiles.map((file) => {
@@ -886,19 +929,59 @@ const MobileBranchFileList: React.FC<{
           })}
         </ul>
       </ScrollShadow>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <MobileBranchBaseRow branchBase={branchBase} onPress={() => setIsBasePickerOpen(true)} />
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
 };
 
 /**
- * The base-branch picker shown when git cannot detect where the current branch
- * started. Search narrows the candidate list (every known branch except the
- * current one); picking one writes the override through the hook, which the
- * surface never reads back directly — the hook resolves it into branchBase.
+ * The pinned "current base" row above the branch file list. Tapping it opens
+ * the change-base picker. Shown for every resolved-base state (list, empty,
+ * error, reloading) so the base stays visible and changeable even with no
+ * changes on the branch.
+ */
+const MobileBranchBaseRow: React.FC<{
+  branchBase: string;
+  onPress: () => void;
+}> = ({ branchBase, onPress }) => {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      className="flex min-h-10 w-full shrink-0 items-center gap-2 border-b border-border/60 bg-[var(--surface-elevated)]/40 px-4 py-2 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      style={{ touchAction: 'manipulation' }}
+    >
+      <Icon name="git-branch" className="size-4 shrink-0 text-primary" />
+      <span className="min-w-0 flex-1 truncate typography-ui-label text-foreground">
+        {t('gitView.pr.field.baseBranch')}: {branchBase}
+      </span>
+      <Icon name="arrow-down-s" className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+};
+
+/**
+ * The base-branch picker. Two modes share the search + candidate list:
+ * - fallback (no `onClose`): git could not detect where the current branch
+ *   started; shows the no-base title/description, and the whole body is the
+ *   picker.
+ * - change (with `onClose`): a base is already resolved; shows a back row
+ *   labelled with the current base so the user knows what they are replacing.
+ * Picking any branch writes the override through the hook, which the surface
+ * never reads back directly — the hook resolves it into branchBase.
  */
 const MobileBranchBasePicker: React.FC<{
   branchScope: UseMobileBranchDiffScopeResult;
-}> = ({ branchScope }) => {
+  onPick: (branch: string) => void;
+  onClose?: () => void;
+}> = ({ branchScope, onPick, onClose }) => {
   const { t } = useI18n();
   const [searchTerm, setSearchTerm] = React.useState('');
   const normalizedTerm = searchTerm.trim().toLowerCase();
@@ -909,11 +992,27 @@ const MobileBranchBasePicker: React.FC<{
   return (
     <ScrollShadow className="h-full overflow-y-auto">
       <div className="flex flex-col gap-3 px-4 py-4">
-        <div className="flex flex-col items-center gap-1 text-center">
-          <Icon name="git-branch" className="size-6 text-muted-foreground" />
-          <h3 className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.noBaseTitle')}</h3>
-          <p className="max-w-sm typography-micro text-muted-foreground">{t('diffView.branch.noBaseDescription')}</p>
-        </div>
+        {onClose ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={t('header.actions.backAria')}
+            >
+              <Icon name="arrow-left" className="size-5" />
+            </button>
+            <h3 className="min-w-0 flex-1 truncate typography-ui-label font-semibold text-foreground">
+              {t('gitView.pr.field.baseBranch')}: {branchScope.branchBase ?? ''}
+            </h3>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 text-center">
+            <Icon name="git-branch" className="size-6 text-muted-foreground" />
+            <h3 className="typography-ui-label font-semibold text-foreground">{t('diffView.branch.noBaseTitle')}</h3>
+            <p className="max-w-sm typography-micro text-muted-foreground">{t('diffView.branch.noBaseDescription')}</p>
+          </div>
+        )}
         <div className="relative">
           <Icon
             name="search"
@@ -936,7 +1035,7 @@ const MobileBranchBasePicker: React.FC<{
               <li key={branch}>
                 <button
                   type="button"
-                  onClick={() => branchScope.setBaseOverride(branch)}
+                  onClick={() => onPick(branch)}
                   className="flex min-h-10 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--interactive-focus-ring)]"
                   style={{ touchAction: 'manipulation' }}
                 >
