@@ -556,7 +556,7 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-[var(--oc-header-height,56px)] shrink-0 items-center gap-2 px-3 text-foreground">
+      <header className="flex h-[var(--oc-header-height,56px)] shrink-0 items-center gap-2 border-b border-border/70 px-3 text-foreground">
         {onClose ? (
           <button
             type="button"
@@ -574,7 +574,14 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
             {status?.current || currentDirectory}
           </p>
         </div>
-        {effectiveScope === 'changes' ? (
+        <MobileScopeSelector
+          scope={effectiveScope}
+          showBranchOption={branchScope.isBranchScopeAvailable}
+          onScopeChange={handleScopeChange}
+        />
+      </header>
+      {effectiveScope === 'changes' ? (
+        <div className="flex shrink-0 justify-center border-b border-border/70 px-3 py-2">
           <SyncActions
             syncAction={syncAction}
             remotes={effectiveRemotes}
@@ -586,13 +593,8 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
             trackingRemoteName={status?.tracking?.split('/')[0]}
             hasUncommittedChanges={changeEntries.length > 0}
           />
-        ) : null}
-      </header>
-      <MobileScopeSelector
-        scope={effectiveScope}
-        showBranchOption={branchScope.isBranchScopeAvailable}
-        onScopeChange={handleScopeChange}
-      />
+        </div>
+      ) : null}
       {effectiveScope === 'branch' ? (
         <MobileBranchFileList branchScope={branchScope} onSelectFile={handleViewBranchDiff} />
       ) : changeEntries.length > 0 ? (
@@ -717,12 +719,12 @@ const MobileDiffDetail: React.FC<{
 };
 
 /**
- * The "Changed" vs "Branch" mode switch for the mobile changes list. A centered
- * pill keeps the header (title/subtitle/SyncActions) untouched and gives both
- * segments 40px+ touch targets. The Branch segment only appears once the
- * default branch is known and differs from the current one; while it is absent
- * the control degrades to a single active segment instead of disappearing, so
- * the row height never shifts.
+ * The "Changed" vs "Branch" mode switch for the mobile changes list. It lives
+ * in the header's right side, beside the title, so the scope is always visible
+ * without a dedicated row. The pill gives both segments 40px+ touch targets.
+ * The Branch segment only appears once the default branch is known and differs
+ * from the current one; while it is absent the control degrades to a single
+ * active segment instead of disappearing, so the header layout never shifts.
  */
 const MobileScopeSelector: React.FC<{
   scope: 'changes' | 'branch';
@@ -753,15 +755,13 @@ const MobileScopeSelector: React.FC<{
   };
 
   return (
-    <div className="flex shrink-0 justify-center border-b border-border/70 px-3 py-2">
-      <div
-        role="group"
-        aria-label={t('diffView.scope.selectorAria')}
-        className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-[var(--surface-elevated)] p-0.5"
-      >
-        {renderSegment('changes', t('diffView.scope.changed'))}
-        {showBranchOption ? renderSegment('branch', t('diffView.scope.branch'), 'git-branch') : null}
-      </div>
+    <div
+      role="group"
+      aria-label={t('diffView.scope.selectorAria')}
+      className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border/60 bg-[var(--surface-elevated)] p-0.5"
+    >
+      {renderSegment('changes', t('diffView.scope.changed'))}
+      {showBranchOption ? renderSegment('branch', t('diffView.scope.branch'), 'git-branch') : null}
     </div>
   );
 };
