@@ -48,7 +48,7 @@ import type { SnippetAutocompleteHandle } from './SnippetAutocomplete';
 import { cn } from "@/lib/utils";
 import { ModelControls } from './ModelControls';
 import { parseAgentMentions } from '@/lib/messages/agentMentions';
-import { StatusRow } from './StatusRow';
+import { ComposerStatusBar } from './ComposerStatusBar';
 import { PendingChangesBar } from './PendingChangesBar';
 import { useChatSurfaceMode } from './useChatSurfaceMode';
 import { MobileAgentButton } from './MobileAgentButton';
@@ -77,6 +77,7 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { usePermissionStore } from '@/stores/permissionStore';
 import { togglePermissionAutoAccept } from './permissionAutoAccept';
+import { useKeybind } from '@/hooks/useKeybind';
 import { extractGitChangedFiles } from './changedFiles';
 import { useI18n } from '@/lib/i18n';
 import { sessionEvents } from '@/lib/sessionEvents';
@@ -220,11 +221,15 @@ const MemoModelControls = React.memo(ModelControls);
 const MemoComposerDictation = React.memo(ComposerDictation);
 const MemoMobileAgentButton = React.memo(MobileAgentButton);
 const MemoMobileModelButton = React.memo(MobileModelButton);
-const MemoStatusRow = React.memo(StatusRow);
+const MemoComposerStatusBar = React.memo(ComposerStatusBar);
 
 interface ChatInputProps {
     onOpenSettings?: () => void;
     scrollToBottom?: () => void;
+    // Queued sends do not create a user row (the queue delivers later), so
+    // the anchor-arming scrollToBottom is wrong for them; this returns the
+    // viewport to the live edge instead.
+    scrollToLatest?: () => void;
     active?: boolean;
     draftPresentationExiting?: boolean;
 }
@@ -243,6 +248,7 @@ const resolveChatDraftIdentity = (sessionId: string | null): ChatDraftIdentity |
 const ChatInputComponent: React.FC<ChatInputProps> = ({
     onOpenSettings,
     scrollToBottom,
+    scrollToLatest,
     active = true,
     draftPresentationExiting = false,
 }) => {
@@ -898,6 +904,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             } : undefined,
         });
 
+        // Sending while the agent works must still take the reader to the
+        // live edge — a queued message produces no user row yet, so the
+        // anchor path has nothing to claim and would leave the viewport
+        // parked mid-history.
+        scrollToLatest?.();
+
         // Clear input and attachments
         // Note: confirmedMentionsRef is NOT cleared here because queued messages
         // are processed later in handleSubmit which reads the ref via extractInlineFileMentions.
@@ -910,7 +922,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         if (!isMobile) {
             composerRef.current?.focus();
         }
-    }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, attachedFiles, sanitizeAttachmentsForSend, addToQueue, clearAttachedFiles, isMobile, currentProviderId, currentModelId, currentAgentName, currentVariant]);
+    }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, attachedFiles, sanitizeAttachmentsForSend, addToQueue, clearAttachedFiles, isMobile, currentProviderId, currentModelId, currentAgentName, currentVariant, scrollToLatest]);
 
     const handleQueuedMessageEdit = React.useCallback((content: string) => {
         setMessage(content);
@@ -1289,6 +1301,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             ...additionalParts.flatMap(p => p.attachments ?? []),
         ];
 
+        // Arm the timeline anchor BEFORE the optimistic user row can commit;
+        // arming after (or a frame later) races the commit and the anchor
+        // never claims the new message.
+        scrollToBottom?.();
+
         const sendPromise = sendMessage(
             primaryText,
             providerIdToSend,
@@ -1306,14 +1323,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 useInlineCommentDraftStore.getState().restoreDrafts(consumedDraftTarget, drafts);
             }
         };
-
-        if (typeof window === 'undefined') {
-            scrollToBottom?.();
-        } else {
-            window.requestAnimationFrame(() => {
-                scrollToBottom?.();
-            });
-        }
 
         void sendPromise.then(() => {
             // Record what this session was pointed at, so the work-status panel
@@ -2554,6 +2563,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         t,
     ]);
 
+    useKeybind('toggle_permission_auto_accept', () => {
+        if (!isPermissionAutoAcceptInteractive) return false;
+        handlePermissionAutoAcceptToggle();
+    });
+
     React.useEffect(() => {
         const pendingAbortBanner = Boolean(abortPromptSessionId) && abortPromptSessionId === currentSessionId;
         if (!prevWasAbortedRef.current && pendingAbortBanner && !showAbortStatus) {
@@ -2648,9 +2662,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     sessionId={currentSessionId}
                     directory={currentSessionDirectoryForSync ?? currentDirectory}
                 />
-                <MemoStatusRow
+                <MemoComposerStatusBar
                     showAbortStatus={showAbortStatus}
-                    showAssistantStatus={false}
                     showTodos={composerStatusExtrasEnabled}
                     leftAccessory={!composerStatusExtrasEnabled || newSessionDraftOpen || !hasPendingChanges
                         ? null
