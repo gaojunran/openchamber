@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores/useUIStore';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useGitStore, useGitStatus, useIsGitRepo, useGitLoadingStatus } from '@/stores/useGitStore';
 import { useGitBaseBranchStore, gitBaseBranchEntryKey } from '@/stores/useGitBaseBranchStore';
-import { coerceDiffScope, branchRangeKey, isBranchScopeAvailable, isBranchScopeDefinitelyUnavailable, useRangeKeyedCache, useBoundedDirectoryRetry } from './branchDiffScope';
+import { coerceDiffScope, branchRangeKey, candidateBranchesForBasePicker, isBranchScopeAvailable, isBranchScopeDefinitelyUnavailable, resolveRepositoryDefaultBranch, useRangeKeyedCache, useBoundedDirectoryRetry } from './branchDiffScope';
 import { getBranchBase, getGitRangeDiff, getGitRangeFiles } from '@/lib/gitApi';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { cn } from '@/lib/utils';
@@ -1179,12 +1179,10 @@ export const DiffView: React.FC<DiffViewProps> = ({
         BRANCH_METADATA_MAX_ATTEMPTS
     );
 
-    const repositoryDefaultBranch = React.useMemo(() => {
-        const trackingRemote = status?.tracking?.trim().split('/')[0];
-        return (trackingRemote && branches?.defaultBranches?.[trackingRemote])
-            ?? branches?.defaultBranches?.origin
-            ?? null;
-    }, [branches, status?.tracking]);
+    const repositoryDefaultBranch = React.useMemo(
+        () => resolveRepositoryDefaultBranch(status?.tracking ?? null, branches?.defaultBranches),
+        [branches?.defaultBranches, status?.tracking]
+    );
     // Offered only while the default branch is known and the current branch is
     // not it (an unknown default must not flash the option on a guess), and
     // only outside VS Code (the extension has no context diff panel).
@@ -2059,10 +2057,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             // Shared candidate pool for both pickers (fallback and change-base):
             // every known branch except the current one, remote prefixes
             // stripped, sorted. Search narrows it per picker.
-            const candidateBranches = (branches?.all ?? [])
-                .map((name: string) => name.replace(/^remotes\//, ''))
-                .filter((name: string) => name !== currentBranch && !name.endsWith(`/${currentBranch}`))
-                .sort();
+            const candidateBranches = candidateBranchesForBasePicker(branches?.all, currentBranch);
 
             if (!branchBase) {
                 const filteredCandidates = rankByQuery(candidateBranches, basePickerSearch, (name) => [name]);
