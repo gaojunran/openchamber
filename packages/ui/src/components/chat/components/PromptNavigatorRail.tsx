@@ -119,8 +119,8 @@ export function PromptNavigatorRail({
         const sets: ShortcutModifier[][] = [];
         for (const actionId of ['jump_prev_user_message', 'jump_next_user_message'] as const) {
             const combo = getEffectiveShortcutCombo(actionId, shortcutOverrides);
-            const modifiers = parseShortcut(combo).modifiers;
-            if (modifiers.size > 0) {
+            const modifiers = parseShortcut(combo)?.chords[0]?.modifiers;
+            if (modifiers && modifiers.size > 0) {
                 sets.push([...modifiers]);
             }
         }

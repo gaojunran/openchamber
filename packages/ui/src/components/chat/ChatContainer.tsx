@@ -1094,8 +1094,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             const isNextMessageShortcut = eventMatchesShortcut(event, nextMessageCombo);
 
             if (isPrevMessageShortcut || isNextMessageShortcut) {
-                const { activeMainTab } = useUIStore.getState();
-                if (activeMainTab !== 'chat' || hasBlockingChatOverlay()) {
+                if (hasBlockingChatOverlay()) {
                     return;
                 }
 
