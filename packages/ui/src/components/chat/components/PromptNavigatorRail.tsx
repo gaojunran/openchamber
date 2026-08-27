@@ -9,9 +9,25 @@ import {
     getEffectiveShortcutCombo,
     isShortcutModifierHeld,
     parseShortcut,
+    type ShortcutCombo,
     type ShortcutModifier,
 } from '@/lib/shortcuts';
 import { getMessagePreview } from '../lib/messagePreview';
+
+/** Modifier sets of the jump shortcuts, resolved from the user's effective
+    config. Actions whose combo carries no modifier don't participate in hold
+    detection, so the feature degrades to never showing. */
+function jumpHoldModifierSets(overrides: Record<string, ShortcutCombo>): ShortcutModifier[][] {
+    const sets: ShortcutModifier[][] = [];
+    for (const actionId of ['jump_prev_user_message', 'jump_next_user_message'] as const) {
+        const combo = getEffectiveShortcutCombo(actionId, overrides);
+        const modifiers = parseShortcut(combo)?.chords[0]?.modifiers;
+        if (modifiers && modifiers.size > 0) {
+            sets.push([...modifiers]);
+        }
+    }
+    return sets;
+}
 
 type PromptEntry = {
     turnId: string;
@@ -111,23 +127,6 @@ export function PromptNavigatorRail({
     const [highlightedIndex, setHighlightedIndex] = React.useState<number | null>(null);
     const [windowStart, setWindowStart] = React.useState(0);
     const [isNarrowGutter, setIsNarrowGutter] = React.useState(false);
-
-    // Modifier sets of the jump shortcuts, resolved from the user's effective
-    // config. Actions whose combo carries no modifier don't participate in hold
-    // detection, so the feature degrades to never showing.
-    const holdModifierSets = React.useMemo(() => {
-        const sets: ShortcutModifier[][] = [];
-        for (const actionId of ['jump_prev_user_message', 'jump_next_user_message'] as const) {
-            const combo = getEffectiveShortcutCombo(actionId, shortcutOverrides);
-            const modifiers = parseShortcut(combo)?.chords[0]?.modifiers;
-            if (modifiers && modifiers.size > 0) {
-                sets.push([...modifiers]);
-            }
-        }
-        return sets;
-    }, [shortcutOverrides]);
-    const holdModifierSetsRef = React.useRef(holdModifierSets);
-    holdModifierSetsRef.current = holdModifierSets;
 
     // Shrink the hit zone whenever the message column reaches under the
     // full-width gutter, so bubble clicks (expand/collapse) stay clickable.
@@ -340,8 +339,7 @@ export function PromptNavigatorRail({
         const releaseHold = () => setPromptNavigatorHoldOpen(false);
 
         const handleKeyUp = (event: KeyboardEvent) => {
-            const heldSets = holdModifierSetsRef.current;
-            const anySetFullyHeld = heldSets.some((modifiers) =>
+            const anySetFullyHeld = jumpHoldModifierSets(shortcutOverrides).some((modifiers) =>
                 modifiers.every((modifier) => isShortcutModifierHeld(event, modifier)),
             );
             if (!anySetFullyHeld) {
@@ -355,24 +353,23 @@ export function PromptNavigatorRail({
             window.removeEventListener('keyup', handleKeyUp);
             window.removeEventListener('blur', releaseHold);
         };
-    }, [setPromptNavigatorHoldOpen]);
+    }, [setPromptNavigatorHoldOpen, shortcutOverrides]);
 
+    // Hold mode owns the highlight while active: entering pins the preview to
+    // the active turn, and leaving drops it unless the pointer is still over
+    // the gutter (where hover keeps it alive).
     React.useEffect(() => {
-        if (!isPromptNavigatorHoldOpen || activeIndex < 0) {
-            return;
-        }
-        cancelScheduledHide();
-        ensureWindowContains(activeIndex);
-        setHighlightedIndex(activeIndex);
-    }, [activeIndex, cancelScheduledHide, ensureWindowContains, isPromptNavigatorHoldOpen]);
-
-    // When hold mode ends without the pointer over the gutter, drop the
-    // highlight so the panel collapses.
-    React.useEffect(() => {
-        if (!isPromptNavigatorHoldOpen && pointerYRef.current === null) {
+        if (isPromptNavigatorHoldOpen) {
+            if (activeIndex < 0) {
+                return;
+            }
+            cancelScheduledHide();
+            ensureWindowContains(activeIndex);
+            setHighlightedIndex(activeIndex);
+        } else if (pointerYRef.current === null) {
             setHighlightedIndex(null);
         }
-    }, [isPromptNavigatorHoldOpen]);
+    }, [activeIndex, cancelScheduledHide, ensureWindowContains, isPromptNavigatorHoldOpen]);
 
     const handlePointerMove = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         if (isPromptNavigatorHoldOpen) {
