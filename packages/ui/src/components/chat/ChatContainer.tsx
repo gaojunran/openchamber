@@ -124,6 +124,38 @@ const shouldIgnoreChatNavigationForFocus = (activeElement: Element | null, scrol
     return !scrollContainer?.contains(activeElement);
 };
 
+const isChatComposerElement = (element: Element | null): boolean =>
+    Boolean(element?.closest('[data-chat-input="true"]'));
+
+// Jump shortcuts share the overlay and inner-scroller gates with the plain
+// ArrowUp/ArrowDown turn navigation but deliberately not the composer gate.
+// PageUp/PageDown carry no text-editing semantics in CodeMirror's standard
+// keymap beyond the selectPageUp selection extension, which the capture-phase
+// dispatcher consumes first, so stepping turns while typing is safe and is the
+// one scenario the arrow navigation cannot cover.
+const shouldIgnoreChatJumpFocus = (activeElement: Element | null, scrollContainer: HTMLElement | null): boolean => {
+    if (!activeElement || activeElement === document.body || activeElement === document.documentElement) {
+        return true;
+    }
+
+    if (isChatComposerElement(activeElement)) {
+        return false;
+    }
+
+    if (shouldIgnoreChatNavigationTarget(activeElement)) {
+        return true;
+    }
+
+    return !scrollContainer?.contains(activeElement);
+};
+
+const shouldIgnoreChatJumpTarget = (target: EventTarget | null): boolean => {
+    if (isHTMLElement(target)) {
+        return !isChatComposerElement(target) && shouldIgnoreChatNavigationTarget(target);
+    }
+    return false;
+};
+
 const hasBlockingChatOverlay = (): boolean => {
     const {
         isAboutDialogOpen,
@@ -1114,11 +1146,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             }
 
             const scrollContainer = scrollRef.current;
-            if (shouldIgnoreChatNavigationForFocus(document.activeElement, scrollContainer)) {
+            if (shouldIgnoreChatJumpFocus(document.activeElement, scrollContainer)) {
                 return false;
             }
 
-            if (shouldIgnoreChatNavigationTarget(event.target)) {
+            if (shouldIgnoreChatJumpTarget(event.target)) {
                 return false;
             }
 
@@ -1132,6 +1164,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         // target, otherwise it is regular typing and must not be swallowed.
         const handleJumpPrefixKeyDownCapture = (event: KeyboardEvent) => {
             if (!jumpDispatcher.hasActivePrefix()) {
+                if (!jumpDispatcher.dispatch(event)) {
+                    return;
+                }
+                // Full-combo jump: consume in capture so the composer's
+                // CodeMirror keymap (Shift+PageUp = selectPageUp) never runs
+                // against a completed sequence.
+                event.preventDefault();
+                event.stopPropagation();
                 return;
             }
             if (
