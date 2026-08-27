@@ -31,7 +31,9 @@ import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { Icon } from "@/components/icon/Icon";
 import { cn, formatDirectoryName } from '@/lib/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { eventMatchesShortcut, getEffectiveShortcutCombo } from '@/lib/shortcuts';
+import { getEffectiveShortcutCombo, ShortcutDispatcher } from '@/lib/shortcuts';
+import { ShortcutRegistry } from '@/lib/shortcuts/registry';
+import { isEditableEventTarget } from '@/hooks/keyboard-shortcut-dom';
 
 // New sync system imports
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -1050,6 +1052,29 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         // wrong message; a teleport always arrives.
         void navigation.scrollToTurnId(turnId, { behavior: 'auto' });
     }, [navigation]);
+    // Local shortcut dispatcher for the jump-between-user-messages actions.
+    // They must react to chat state (overlays, focus, scroll container), so
+    // they cannot live in the global registry; a local registry + dispatcher
+    // (the selection toolbar does the same) also gives them proper multi-chord
+    // sequence support instead of single-shot event matching.
+    const jumpRegistryRef = React.useRef<ShortcutRegistry | null>(null);
+    const jumpDispatcherRef = React.useRef<ShortcutDispatcher | null>(null);
+    if (!jumpRegistryRef.current) {
+        jumpRegistryRef.current = new ShortcutRegistry();
+    }
+    if (!jumpDispatcherRef.current) {
+        jumpDispatcherRef.current = new ShortcutDispatcher({
+            registry: jumpRegistryRef.current,
+            getBinding: (actionId) => getEffectiveShortcutCombo(
+                actionId,
+                useUIStore.getState().shortcutOverrides,
+            ),
+        });
+    }
+    const jumpDispatcher = jumpDispatcherRef.current;
+    const jumpRegistry = jumpRegistryRef.current;
+    const navigationRef = React.useRef(navigation);
+    navigationRef.current = navigation;
     const canLoadEarlierPrompts = timelineController.historySignals.canLoadEarlier;
     const showPromptNavigator = !isMobile
         && !isVSCode
@@ -1083,33 +1108,53 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             return;
         }
 
+        const createJumpHandler = (direction: -1 | 1) => (event: KeyboardEvent): boolean | void => {
+            if (hasBlockingChatOverlay()) {
+                return false;
+            }
+
+            const scrollContainer = scrollRef.current;
+            if (shouldIgnoreChatNavigationForFocus(document.activeElement, scrollContainer)) {
+                return false;
+            }
+
+            if (shouldIgnoreChatNavigationTarget(event.target)) {
+                return false;
+            }
+
+            useUIStore.getState().setPromptNavigatorHoldOpen(true);
+            void navigationRef.current.scrollByTurnOffset(direction, { resumePastEnd: false });
+        };
+
+        // The completion key of a jump chord sequence. Mirrors the global
+        // dispatcher's guard: an unmodified key typed into an editable target
+        // only continues the sequence when the prefix was armed from that same
+        // target, otherwise it is regular typing and must not be swallowed.
+        const handleJumpPrefixKeyDownCapture = (event: KeyboardEvent) => {
+            if (!jumpDispatcher.hasActivePrefix()) {
+                return;
+            }
+            if (
+                !event.ctrlKey && !event.metaKey && !event.altKey
+                && isEditableEventTarget(event.target)
+                && jumpDispatcher.getActivePrefixTarget() !== event.target
+            ) {
+                jumpDispatcher.clear();
+                return;
+            }
+            if (jumpDispatcher.dispatchActivePrefix(event)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+
         const handleChatTurnKeyDown = (event: KeyboardEvent) => {
             if (event.defaultPrevented || event.isComposing) {
                 return;
             }
 
-            const prevMessageCombo = getEffectiveShortcutCombo('jump_prev_user_message', shortcutOverrides);
-            const nextMessageCombo = getEffectiveShortcutCombo('jump_next_user_message', shortcutOverrides);
-            const isPrevMessageShortcut = eventMatchesShortcut(event, prevMessageCombo);
-            const isNextMessageShortcut = eventMatchesShortcut(event, nextMessageCombo);
-
-            if (isPrevMessageShortcut || isNextMessageShortcut) {
-                if (hasBlockingChatOverlay()) {
-                    return;
-                }
-
-                const scrollContainer = scrollRef.current;
-                if (shouldIgnoreChatNavigationForFocus(document.activeElement, scrollContainer)) {
-                    return;
-                }
-
-                if (shouldIgnoreChatNavigationTarget(event.target)) {
-                    return;
-                }
-
+            if (jumpDispatcher.dispatch(event)) {
                 event.preventDefault();
-                useUIStore.getState().setPromptNavigatorHoldOpen(true);
-                void navigation.scrollByTurnOffset(isPrevMessageShortcut ? -1 : 1, { resumePastEnd: false });
                 return;
             }
 
@@ -1136,14 +1181,22 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
             event.preventDefault();
             const offset = event.key === 'ArrowUp' ? -1 : 1;
-            void navigation.scrollByTurnOffset(offset, { resumePastEnd: false });
+            void navigationRef.current.scrollByTurnOffset(offset, { resumePastEnd: false });
         };
 
+        const unregisterPrevJump = jumpRegistry.register('jump_prev_user_message', createJumpHandler(-1));
+        const unregisterNextJump = jumpRegistry.register('jump_next_user_message', createJumpHandler(1));
+
+        window.addEventListener('keydown', handleJumpPrefixKeyDownCapture, true);
         window.addEventListener('keydown', handleChatTurnKeyDown);
         return () => {
+            unregisterPrevJump();
+            unregisterNextJump();
+            window.removeEventListener('keydown', handleJumpPrefixKeyDownCapture, true);
             window.removeEventListener('keydown', handleChatTurnKeyDown);
+            jumpDispatcher.handleBlur();
         };
-    }, [currentSessionId, isDesktopExpandedInput, navigation, scrollRef, shortcutOverrides]);
+    }, [currentSessionId, isDesktopExpandedInput, jumpDispatcher, jumpRegistry, scrollRef]);
 
     React.useLayoutEffect(() => {
         const container = scrollRef.current;
