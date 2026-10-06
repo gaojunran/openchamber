@@ -474,6 +474,7 @@ describe("OpenChamber-native frames", () => {
         kind: "opencode-restart-interrupted",
         sessionId: "ses_a",
         directory: "/repo",
+        runtimeKey: getRuntimeKey(),
         requireHidden: false,
       })
       // A global frame must not materialize a directory store on its way through.
@@ -507,6 +508,7 @@ describe("OpenChamber-native frames", () => {
         body: "Ready to review",
         tag: "plugin-build-done",
         kind: "plugin",
+        runtimeKey: getRuntimeKey(),
         requireHidden: true,
       })
       expect(childStores.children.size).toBe(0)
