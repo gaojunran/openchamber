@@ -46,7 +46,7 @@ export const MobileConnectionDebugPanel: React.FC<{ onClose: () => void }> = ({ 
           <p className="typography-small text-muted-foreground">{t('mobile.connectionDebug.empty')}</p>
         ) : (
           <pre className="whitespace-pre-wrap break-words typography-code text-muted-foreground">
-            {entries.map(formatMobileConnectDebugEntry).join('\n')}
+            {entries.map((entry, index) => formatMobileConnectDebugEntry(entry, entries[index - 1])).join('\n')}
           </pre>
         )}
       </div>

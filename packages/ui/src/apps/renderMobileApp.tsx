@@ -11,6 +11,7 @@ import type { RuntimeAPIs } from '@/lib/api/types';
 import { startAppearanceAutoSave } from '@/lib/appearanceAutoSave';
 import { getDeviceInfo } from '@/lib/device';
 import { markAppBootReady } from './appBootReady';
+import { markStartupPhase } from './mobileConnectionDebug';
 import { installMobileWidgetSnapshotBridge } from './mobileWidgetSnapshot';
 import { applyPersistedDirectoryPreferences } from '@/lib/directoryPersistence';
 import { initializeLocale, I18nProvider } from '@/lib/i18n';
@@ -20,6 +21,7 @@ import { startTypographyWatcher } from '@/lib/typographyWatcher';
 import { preloadMarkdownRenderer } from '@/components/chat/markdownRendererLoader';
 import { SessionAuthGate } from '@/components/auth/SessionAuthGate';
 import { MobileApp } from './MobileApp';
+import { MobileStartupTraceOverlay } from './MobileStartupTraceOverlay';
 
 const initializeSharedPreferences = () => {
   initializeLocale();
@@ -45,6 +47,7 @@ const initializeSharedPreferences = () => {
 };
 
 export function renderMobileApp(apis: RuntimeAPIs) {
+  markStartupPhase('boot:renderMobileApp');
   // Stamp the surface before anything else reads it: perf tuning, sync paging,
   // and device info all key off isMobileSurfaceRuntime(), and without the stamp
   // a wide native device (iPad landscape) would fall out of the mobile branch.
@@ -84,6 +87,11 @@ export function renderMobileApp(apis: RuntimeAPIs) {
   // --ui-password server must keep the classic SessionAuthGate unlock page.
   const app = <MobileApp apis={resolvedApis} />;
 
+  // ?connectDebug=1 mounts the phone-side trace reader over the app (mobile web has
+  // no native Instances sheet to long-press, and no tethered console).
+  const showStartupTrace = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('connectDebug');
+
   createRoot(rootElement).render(
     <StrictMode>
       <I18nProvider>
@@ -91,6 +99,7 @@ export function renderMobileApp(apis: RuntimeAPIs) {
           <ThemeProvider>
             <DiffWorkerProvider>
               {isNativeShell ? app : <SessionAuthGate>{app}</SessionAuthGate>}
+              {showStartupTrace ? <MobileStartupTraceOverlay /> : null}
             </DiffWorkerProvider>
           </ThemeProvider>
         </ThemeSystemProvider>

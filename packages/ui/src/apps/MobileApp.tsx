@@ -77,6 +77,7 @@ import { ScheduledTasksView, type ScheduledTasksLeaveReason } from '@/components
 import { MobileWorkspaceDrawer, type MobileWorkspaceTab } from './MobileWorkspaceDrawer';
 import { DedicatedMobileAppProvider, type MobileAppActions } from './mobileAppContext';
 import { autoConnectLastInstance, getAutoConnectTargetLabel, logMobileConnectEvent, reprobeActiveConnection, type AutoConnectOutcome } from './mobileConnections';
+import { markStartupPhase } from './mobileConnectionDebug';
 import { isCapacitorMobileApp, useNativeAndroidBackButton, useNativeMobileChrome, useNativeMobileLifecycle } from './mobileNativeChrome';
 import { reconnectAppForTransportSwitch, resetAppForRuntimeEndpointChange } from './runtimeEndpointReset';
 import { useAppFontEffects } from './useAppFontEffects';
@@ -1077,6 +1078,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
 
   React.useEffect(() => {
     setIsMobile(true);
+    markStartupPhase('app:mount');
   }, [setIsMobile]);
 
   React.useEffect(() => {
@@ -1086,7 +1088,8 @@ function MobileAppContent({ apis }: MobileAppProps) {
     // "succeeds" against a fake backend and flips isConnected back on, leaving
     // the user in an empty shell after a disconnect.
     if (isNativeMobileApp && !getRuntimeApiBaseUrl()) return;
-    void initializeApp();
+    markStartupPhase('init:start');
+    void initializeApp().finally(() => markStartupPhase('init:end'));
   }, [connectionEpoch, initializeApp, isNativeMobileApp]);
 
   React.useEffect(() => {
@@ -1094,6 +1097,22 @@ function MobileAppContent({ apis }: MobileAppProps) {
     if (providersCount === 0) void loadProviders({ source: 'mobileApp:recovery' });
     if (agentsCount === 0) void loadAgents({ source: 'mobileApp:recovery' });
   }, [agentsCount, isConnected, loadAgents, loadProviders, providersCount]);
+
+  // Cold-launch phase marks: isConnected flips at the health probe, isInitialized at
+  // providers/agents-done, so the gap between them attributes initializeApp.
+  const connectedPhaseMarkedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isConnected || connectedPhaseMarkedRef.current) return;
+    connectedPhaseMarkedRef.current = true;
+    markStartupPhase('conn:connected');
+  }, [isConnected]);
+
+  const initializedPhaseMarkedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isInitialized || initializedPhaseMarkedRef.current) return;
+    initializedPhaseMarkedRef.current = true;
+    markStartupPhase('init:initialized');
+  }, [isInitialized]);
 
   // Cold-launch continuity: after the launch instance connects, reopen the
   // session that was open on this instance last time — but only after an
@@ -1113,9 +1132,11 @@ function MobileAppContent({ apis }: MobileAppProps) {
     // Safety valve: the overlay must never strand the user on the splash if
     // the snapshot hangs — fall through to the draft after a bounded wait.
     const overlayTimeoutId = window.setTimeout(() => setLastSessionRestorePending(false), 6000);
+    markStartupPhase('restore:start');
     void (async () => {
       const result = await restoreLastActiveSession({ refresh: true });
       if (cancelled) return;
+      markStartupPhase('restore:done', `{"result":"${result}"}`);
       // A failed list read keeps the ref unset so the next connect (a stale
       // persisted isConnected can fire this early) retries the restore.
       if (result !== 'failed') lastSessionRestoreDoneRef.current = true;
@@ -1126,6 +1147,10 @@ function MobileAppContent({ apis }: MobileAppProps) {
       window.clearTimeout(overlayTimeoutId);
     };
   }, [connectionEpoch, isConnected, isNativeMobileApp]);
+
+  React.useEffect(() => {
+    if (isNativeMobileApp && !lastSessionRestorePending) markStartupPhase('overlay:release');
+  }, [isNativeMobileApp, lastSessionRestorePending]);
 
   React.useEffect(() => {
     if (!isConnected) return;
@@ -1275,6 +1300,10 @@ function MobileAppContent({ apis }: MobileAppProps) {
   useDeepLinkSource({ ready: isNativeMobileApp && isConnected && isInitialized });
   const fontsReady = useFontsReady();
 
+  React.useEffect(() => {
+    if (fontsReady) markStartupPhase('boot:fontsReady');
+  }, [fontsReady]);
+
   // `isConnected` is a LIVE flag that flips false on every transient SSE/WS drop and
   // back true on reconnect. We must NOT blank the whole app to a loader on those —
   // only on the initial connect / instance switch (connectionPhase 'connecting').
@@ -1392,7 +1421,11 @@ function MobileAppContent({ apis }: MobileAppProps) {
                   until the last-session restore decides between session and
                   draft — otherwise the auto-opened draft flashes first. The
                   shell (and sync) still mounts and warms up underneath. */}
-              <AppStartupOverlay ready={!isNativeMobileApp || !lastSessionRestorePending} animated />
+              <AppStartupOverlay
+                ready={!isNativeMobileApp || !lastSessionRestorePending}
+                animated
+                onDismissed={isNativeMobileApp ? () => markStartupPhase('overlay:dismissed') : undefined}
+              />
               <SyncAppEffects backgroundWorkEnabled={isInitialized} />
               <OpenCodeUpdateToast />
               <MobileAppUpdateToast />

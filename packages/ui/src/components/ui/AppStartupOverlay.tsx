@@ -9,7 +9,7 @@ const SLOW_START_HINT_DELAY_MS = 10_000;
 
 // Mount only alongside the real app shell. Earlier auth/connection loaders
 // hand off without fading; this is the single reveal of the interactive UI.
-export const AppStartupOverlay: React.FC<{ ready: boolean; animated?: boolean }> = ({ ready, animated = false }) => {
+export const AppStartupOverlay: React.FC<{ ready: boolean; animated?: boolean; onDismissed?: () => void }> = ({ ready, animated = false, onDismissed }) => {
   const { t } = useI18n();
   const [dismissed, setDismissed] = React.useState(false);
   const [slow, setSlow] = React.useState(false);
@@ -34,7 +34,9 @@ export const AppStartupOverlay: React.FC<{ ready: boolean; animated?: boolean }>
       variants={{ loading: { opacity: 1 }, ready: { opacity: 0 } }}
       transition={{ duration: reducedMotion || !ready ? 0 : 0.3, ease: 'easeOut' }}
       onAnimationComplete={(definition) => {
-        if (definition === 'ready' && ready) setDismissed(true);
+        if (definition !== 'ready' || !ready) return;
+        setDismissed(true);
+        onDismissed?.();
       }}
       style={{ pointerEvents: ready ? 'none' : 'auto' }}
     >
