@@ -9,8 +9,6 @@ import { Button } from '@/components/ui/button';
 import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
 import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
 import { ChatView } from '@/components/views/ChatView';
-import { PlanView } from '@/components/views/PlanView';
-import { SettingsView } from '@/components/views/SettingsView';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
 import { SpaceAccessDialog } from '@/components/session/spaces/SpaceAccessDialog';
@@ -18,13 +16,13 @@ import { SpaceActionsSheet, SpaceDeleteDialog } from '@/components/session/space
 import { SpaceApplyDialog } from '@/components/session/spaces/SpaceApplyDialog';
 import { SpaceSetupOutputDialog } from '@/components/session/spaces/SpaceSetupOutput';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
-import { RunOverview } from '@/components/multirun/RunOverview';
 import { RuntimeAPIProvider } from '@/contexts/RuntimeAPIProvider';
 import { useAuthSessionStore } from '@/lib/runtime-auth-expiry';
 import { registerRuntimeAPIs } from '@/contexts/runtimeAPIRegistry';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { usePushVisibilityBeacon } from '@/hooks/usePushVisibilityBeacon';
+import { useOnDemandComponent } from '@/hooks/useOnDemandComponent';
 import { useRouter } from '@/hooks/useRouter';
 import { useTerminalSessionKeepalive } from '@/hooks/useTerminalSessionKeepalive';
 import { useUpdatePolling } from '@/hooks/useUpdatePolling';
@@ -71,15 +69,12 @@ import { MobileHeader } from './MobileHeader';
 import { MobileInstancesSurface } from './MobileInstancesSurface';
 import { MobileSessionsSheet } from './MobileSessionsSheet';
 import { MobileFullscreenSurface } from './MobileFullscreenSurface';
-import { UsageStatsView } from '@/components/views/usage/UsageStatsView';
-import { ArchiveSessionsView } from '@/components/views/ArchiveView';
-import { ScheduledTasksView, type ScheduledTasksLeaveReason } from '@/components/session/ScheduledTasksDialog';
-import { MobileWorkspaceDrawer, type MobileWorkspaceTab } from './MobileWorkspaceDrawer';
+import type { ScheduledTasksLeaveReason } from '@/components/session/ScheduledTasksDialog';
+import type { MobileWorkspaceTab } from './MobileWorkspaceDrawer';
 import { DedicatedMobileAppProvider, type MobileAppActions } from './mobileAppContext';
 import { autoConnectLastInstance, getAutoConnectTargetLabel, logMobileConnectEvent, reprobeActiveConnection, type AutoConnectOutcome } from './mobileConnections';
 import { markStartupPhase } from './mobileConnectionDebug';
 import { isCapacitorMobileApp, useNativeAndroidBackButton, useNativeMobileChrome, useNativeMobileLifecycle } from './mobileNativeChrome';
-import { reconnectAppForTransportSwitch, resetAppForRuntimeEndpointChange } from './runtimeEndpointReset';
 import { useAppFontEffects } from './useAppFontEffects';
 import { useFontsReady } from './useFontsReady';
 import { useDeepLinkHandlers, useDeepLinkSource } from './deepLinkNavigation';
@@ -124,6 +119,19 @@ type MobileAppProps = {
 };
 
 const NATIVE_RESUME_SYNC_EVENT_THROTTLE_MS = 1_000;
+
+// Surfaces the user opens on demand. None of them is on the first screen, and
+// the mobile shell's launch bundle is what the user waits behind (the boot
+// trace shows them downloading before the chat paints): the workspace drawer
+// alone drags the files/diff/git stack in behind it. Each `load` stays a
+// module-level function so the on-demand hook sees a stable identity.
+const loadPlanView = () => import('@/components/views/PlanView').then((m) => m.PlanView);
+const loadSettingsView = () => import('@/components/views/SettingsView').then((m) => m.SettingsView);
+const loadUsageStatsView = () => import('@/components/views/usage/UsageStatsView').then((m) => m.UsageStatsView);
+const loadArchiveSessionsView = () => import('@/components/views/ArchiveView').then((m) => m.ArchiveSessionsView);
+const loadScheduledTasksView = () => import('@/components/session/ScheduledTasksDialog').then((m) => m.ScheduledTasksView);
+const loadRunOverview = () => import('@/components/multirun/RunOverview').then((m) => m.RunOverview);
+const loadMobileWorkspaceDrawer = () => import('./MobileWorkspaceDrawer').then((m) => m.MobileWorkspaceDrawer);
 
 /** The fullscreen app-level surfaces, reachable from the sessions drawer
     footer. Exactly one can be open at a time — opening another replaces it,
@@ -462,6 +470,23 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
     openSettingsSurface('page-content');
   }, [mcpServers, openSettingsSurface, setMcpDraft, setSelectedMcp, setSettingsPage]);
 
+  // Each surface's module is requested the moment its own gate flips, so the
+  // first open still renders instantly — the load starts ahead of the render
+  // instead of showing a Suspense fallback (see useOnDemandComponent). Until it
+  // arrives the surface simply is not there, which is the state the user is
+  // already in before they opened it.
+  const PlanView = useOnDemandComponent(openPlan !== null, loadPlanView, closeSurface);
+  const SettingsView = useOnDemandComponent(activeSurface === 'settings', loadSettingsView, closeSurface);
+  const UsageStatsView = useOnDemandComponent(activeSurface === 'usage', loadUsageStatsView, closeSurface);
+  const ArchiveSessionsView = useOnDemandComponent(activeSurface === 'archive', loadArchiveSessionsView, closeSurface);
+  const ScheduledTasksView = useOnDemandComponent(activeSurface === 'scheduled', loadScheduledTasksView, closeSurface);
+  const RunOverview = useOnDemandComponent(
+    runOverviewOpen,
+    loadRunOverview,
+    () => useUIStore.getState().setRunOverviewKey(null),
+  );
+  const MobileWorkspaceDrawer = useOnDemandComponent(workspaceOpen, loadMobileWorkspaceDrawer, closeWorkspace);
+
   return (
     <DedicatedMobileAppProvider actions={mobileActions}>
       <div
@@ -543,7 +568,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
                 <ChatView />
               </ErrorBoundary>
             </div>
-            <ErrorBoundary><RunOverview /></ErrorBoundary>
+            {RunOverview ? <ErrorBoundary><RunOverview /></ErrorBoundary> : null}
           </main>
         </div>
 
@@ -591,16 +616,18 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             style={{ width: 'var(--oc-ipad-sidebar-width)', overflowX: 'hidden' }}
           >
             <ErrorBoundary>
-              <MobileWorkspaceDrawer
-                open={workspaceOpen}
-                onClose={closeWorkspace}
-                tab={workspaceTab}
-                onTabChange={setWorkspaceTab}
-                pendingChangesDiff={pendingChangesDiff}
-                onOpenPlan={setOpenPlan}
-                onOpenMcpSettings={openMcpCreateSettings}
-                variant={workspaceAsPanel ? 'panel' : 'drawer'}
-              />
+              {MobileWorkspaceDrawer ? (
+                <MobileWorkspaceDrawer
+                  open={workspaceOpen}
+                  onClose={closeWorkspace}
+                  tab={workspaceTab}
+                  onTabChange={setWorkspaceTab}
+                  pendingChangesDiff={pendingChangesDiff}
+                  onOpenPlan={setOpenPlan}
+                  onOpenMcpSettings={openMcpCreateSettings}
+                  variant={workspaceAsPanel ? 'panel' : 'drawer'}
+                />
+              ) : null}
             </ErrorBoundary>
           </div>
           {workspacePanelWidth ? (
@@ -623,13 +650,15 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             title={openPlan.title}
           >
             <ErrorBoundary>
-              <PlanView
-                savedProjectPlan={{ projectRef: openPlan.projectRef, planId: openPlan.id }}
-                onNavigatedToChat={() => {
-                  closeSurface();
-                  closeWorkspace();
-                }}
-              />
+              {PlanView ? (
+                <PlanView
+                  savedProjectPlan={{ projectRef: openPlan.projectRef, planId: openPlan.id }}
+                  onNavigatedToChat={() => {
+                    closeSurface();
+                    closeWorkspace();
+                  }}
+                />
+              ) : null}
             </ErrorBoundary>
           </MobileFullscreenSurface>
         ) : null}
@@ -660,16 +689,18 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             headerless
           >
             <ErrorBoundary>
-              <SettingsView
-                forceMobile
-                isWindowed
-                initialMobileStage={settingsInitialMobileStage}
-                registerBackHandler={registerSettingsBackHandler}
-                // About is shown in the native app too: there it checks and
-                // installs updates of the connected server (AboutSettings).
-                visiblePageSlugs={[...MOBILE_SETTINGS_PAGES]}
-                onClose={closeSurface}
-              />
+              {SettingsView ? (
+                <SettingsView
+                  forceMobile
+                  isWindowed
+                  initialMobileStage={settingsInitialMobileStage}
+                  registerBackHandler={registerSettingsBackHandler}
+                  // About is shown in the native app too: there it checks and
+                  // installs updates of the connected server (AboutSettings).
+                  visiblePageSlugs={[...MOBILE_SETTINGS_PAGES]}
+                  onClose={closeSurface}
+                />
+              ) : null}
             </ErrorBoundary>
           </MobileFullscreenSurface>
         ) : null}
@@ -684,7 +715,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             title={t('usageStats.title')}
           >
             <ErrorBoundary>
-              <UsageStatsView />
+              {UsageStatsView ? <UsageStatsView /> : null}
             </ErrorBoundary>
           </MobileFullscreenSurface>
         ) : null}
@@ -699,7 +730,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             title={t('sessions.scheduledTasks.dialog.title')}
           >
             <ErrorBoundary>
-              <ScheduledTasksView layout="mobile" onLeave={leaveScheduledTasks} />
+              {ScheduledTasksView ? <ScheduledTasksView layout="mobile" onLeave={leaveScheduledTasks} /> : null}
             </ErrorBoundary>
           </MobileFullscreenSurface>
         ) : null}
@@ -714,7 +745,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             title={t('sessions.archivePage.title')}
           >
             <ErrorBoundary>
-              <ArchiveSessionsView open layout="mobile" onLeave={leaveArchive} />
+              {ArchiveSessionsView ? <ArchiveSessionsView open layout="mobile" onLeave={leaveArchive} /> : null}
             </ErrorBoundary>
           </MobileFullscreenSurface>
         ) : null}
@@ -962,14 +993,21 @@ function MobileAppContent({ apis }: MobileAppProps) {
         // prop. Its event-pipeline + bootstrap effects (keyed on `sdk`) then
         // reconnect over the new transport WITHOUT remounting — so the message
         // pagination refs, the open session, and the whole view are preserved.
-        // No key bump, no flash, no bounce to the draft.
-        reconnectAppForTransportSwitch();
-        bumpTransportSwitch();
+        // No key bump, no flash, no bounce to the draft. The reset module is a
+        // chunk of its own now; the rebind still has to land before the bump,
+        // or SyncProvider would render against the SDK that is still bound to
+        // the old transport and never be told again.
+        void import('./runtimeEndpointReset').then((module) => {
+          module.reconnectAppForTransportSwitch();
+          bumpTransportSwitch();
+        });
         return;
       }
-      resetAppForRuntimeEndpointChange(detail);
-      setRuntimeEndpointEpoch((epoch) => epoch + 1);
-      setConnectionEpoch((epoch) => epoch + 1);
+      void import('./runtimeEndpointReset').then((module) => {
+        module.resetAppForRuntimeEndpointChange(detail);
+        setRuntimeEndpointEpoch((epoch) => epoch + 1);
+        setConnectionEpoch((epoch) => epoch + 1);
+      });
     });
   }, []);
 
@@ -986,6 +1024,12 @@ function MobileAppContent({ apis }: MobileAppProps) {
     }
     let cancelled = false;
     setAutoConnectPhase('attempting');
+    // Warm the endpoint-reset chunk alongside the connection probes. The reset
+    // runs the moment the endpoint changes above, and on a launch that change
+    // is what releases initialization — so without this the chunk's load would
+    // sit between the two. Started here it costs nothing: the probes are the
+    // long pole of this phase.
+    void import('./runtimeEndpointReset');
     void (async () => {
       const outcome = await autoConnectLastInstance()
         .catch((): AutoConnectOutcome => ({ status: 'no-candidate' }));
