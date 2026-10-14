@@ -22,6 +22,36 @@ const ESCAPE_SURFACES: Array<{ name: string; file: string; handler: string; clos
     handler: 'export const closeZoneOnEscape',
     close: /close\(\);/,
   },
+  {
+    name: 'sidebar peek',
+    file: 'components/layout/useSidebarPeek.ts',
+    handler: 'const handleKeyDown',
+    close: /hide\(\);/,
+  },
+  {
+    name: 'mobile overlay panel',
+    file: 'components/ui/MobileOverlayPanel.tsx',
+    handler: 'const handleKeyDown',
+    close: /onClose\(\);/,
+  },
+  {
+    name: 'mobile fullscreen surface',
+    file: 'apps/MobileFullscreenSurface.tsx',
+    handler: 'const handleKeyDown',
+    close: /onCloseRef\.current\(\);/,
+  },
+  {
+    name: 'mobile sessions sheet',
+    file: 'apps/MobileSessionsSheet.tsx',
+    handler: 'const handleKeyDown',
+    close: /onCloseRef\.current\(\);/,
+  },
+  {
+    name: 'mobile workspace drawer',
+    file: 'apps/MobileWorkspaceDrawer.tsx',
+    handler: 'const handleKeyDown',
+    close: /onCloseRef\.current\(\);/,
+  },
 ];
 
 describe('escape surfaces ignore IME composition keystrokes', () => {
@@ -31,6 +61,8 @@ describe('escape surfaces ignore IME composition keystrokes', () => {
       const start = source.indexOf(surface.handler);
       expect(start).toBeGreaterThan(-1);
 
+      // From the handler to the end of its close action; the peek sidebar's
+      // handler sits inside an effect that also wires pointer listeners.
       const handler = source.slice(start, start + 2000);
       const guardIndex = handler.indexOf('isIMECompositionEvent');
       const closeIndex = handler.search(surface.close);
