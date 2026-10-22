@@ -578,6 +578,15 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.notifyOnQuestion === 'boolean') {
       result.notifyOnQuestion = candidate.notifyOnQuestion;
     }
+    if (typeof candidate.notifyOnWorkDone === 'boolean') {
+      result.notifyOnWorkDone = candidate.notifyOnWorkDone;
+    }
+    if (typeof candidate.notifyOnReviewReady === 'boolean') {
+      result.notifyOnReviewReady = candidate.notifyOnReviewReady;
+    }
+    if (typeof candidate.notifyOnWaitingOnYou === 'boolean') {
+      result.notifyOnWaitingOnYou = candidate.notifyOnWaitingOnYou;
+    }
     if (candidate.notificationTemplates && typeof candidate.notificationTemplates === 'object') {
       result.notificationTemplates = candidate.notificationTemplates;
     }

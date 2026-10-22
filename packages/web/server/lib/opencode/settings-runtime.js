@@ -23,6 +23,9 @@ const EMPTY_NOTIFICATION_TEMPLATES = {
   error: { title: '', message: '' },
   question: { title: '', message: '' },
   subtask: { title: '', message: '' },
+  workDone: { title: '', message: '' },
+  reviewReady: { title: '', message: '' },
+  waitingOnYou: { title: '', message: '' },
 };
 
 const emptyNotificationTemplates = () => Object.fromEntries(
@@ -986,6 +989,20 @@ export const createSettingsRuntime = (deps) => {
     }
     if (typeof settings.notifyOnQuestion !== 'boolean') {
       next.notifyOnQuestion = true;
+      changed = true;
+    }
+    // Verdict events are opt-in: each enabled one adds a classifier request
+    // per completed turn, so an install that never touched them stays off.
+    if (typeof settings.notifyOnWorkDone !== 'boolean') {
+      next.notifyOnWorkDone = false;
+      changed = true;
+    }
+    if (typeof settings.notifyOnReviewReady !== 'boolean') {
+      next.notifyOnReviewReady = false;
+      changed = true;
+    }
+    if (typeof settings.notifyOnWaitingOnYou !== 'boolean') {
+      next.notifyOnWaitingOnYou = false;
       changed = true;
     }
 
