@@ -604,6 +604,14 @@ export const createNotificationTriggerRuntime = (deps) => {
       }
 
       if (info?.role === 'assistant' && info?.finish === 'error' && sessionId) {
+        // A step the user interrupted ends with `finish: 'error'` carrying an
+        // `aborted` error (stop, steering input, a dismissed question). The
+        // turn was stopped, not failed — `session.idle { aborted: true }`
+        // follows — so there is no agent error to announce.
+        if (info?.error?.type === 'aborted') {
+          return;
+        }
+
         const settings = await readSettingsFromDisk();
         if (settings.notifyOnError === false) return;
 

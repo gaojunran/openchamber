@@ -103,6 +103,35 @@ describe('ready notification on v2 step events', () => {
   });
 });
 
+describe('error notification on v2 step failures', () => {
+  const stepFailed = (sessionID, id, error) => ({
+    type: 'message.updated',
+    properties: { sessionID, info: { id, sessionID, role: 'assistant', finish: 'error', error, time: { completed: 3 } } },
+  });
+
+  it('announces a failed turn, but not one the user interrupted', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { runtime, emitDesktopNotification } = makeRuntime();
+
+    // An interrupted step ends as `finish: 'error'` with an `aborted` error
+    // (stop, steering input, a dismissed question): not an agent error.
+    await runtime.maybeSendPushForTrigger(stepFailed('ses_4', 'msg_4', {
+      name: 'aborted',
+      type: 'aborted',
+      message: 'Step interrupted',
+    }));
+    expect(emitDesktopNotification).not.toHaveBeenCalled();
+
+    await runtime.maybeSendPushForTrigger(stepFailed('ses_5', 'msg_5', {
+      name: 'provider.transport',
+      type: 'provider.transport',
+      message: 'Timed out waiting for response data',
+    }));
+    expect(emitDesktopNotification).toHaveBeenCalledTimes(1);
+    expect(emitDesktopNotification.mock.calls[0][0]).toMatchObject({ kind: 'error' });
+  });
+});
+
 describe('ready notification while background subagents run', () => {
   const stubOpenCode = ({ active, children }) => {
     vi.stubGlobal('fetch', vi.fn(async (input) => {
