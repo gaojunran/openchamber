@@ -45,8 +45,11 @@
     font-size: inherit !important;
   }
 
-  /* Improve touch targets for mobile */
-  :root.mobile-pointer:not(.desktop-runtime) button:not([role="radio"]):not([role="checkbox"]):not([role="switch"]),
+  /* Improve touch targets for mobile. Icon buttons inside a chat tool row are
+     excluded: the row itself is the touch target, and giving them the floor
+     stretches every row that carries one from 36 to 48px, out of rhythm with
+     the rows around it. */
+  :root.mobile-pointer:not(.desktop-runtime) button:not([role="radio"]):not([role="checkbox"]):not([role="switch"]):not(.oc-row-icon-button),
   :root.mobile-pointer:not(.desktop-runtime) .btn,
   :root.mobile-pointer:not(.desktop-runtime) [role="button"],
   /* Static chat tool rows: not interactive as a whole, but they must share
