@@ -1,3 +1,4 @@
+import { isBoolean } from '../shared/guards.js';
 import { createProjectIdFromPath, projectConfigFileStemOf } from '../projects/project-id.js';
 import {
   buildPreferencesFields,
@@ -993,15 +994,15 @@ export const createSettingsRuntime = (deps) => {
     }
     // Verdict events are opt-in: each enabled one adds a classifier request
     // per completed turn, so an install that never touched them stays off.
-    if (typeof settings.notifyOnWorkDone !== 'boolean') {
+    if (!isBoolean(settings.notifyOnWorkDone)) {
       next.notifyOnWorkDone = false;
       changed = true;
     }
-    if (typeof settings.notifyOnReviewReady !== 'boolean') {
+    if (!isBoolean(settings.notifyOnReviewReady)) {
       next.notifyOnReviewReady = false;
       changed = true;
     }
-    if (typeof settings.notifyOnWaitingOnYou !== 'boolean') {
+    if (!isBoolean(settings.notifyOnWaitingOnYou)) {
       next.notifyOnWaitingOnYou = false;
       changed = true;
     }

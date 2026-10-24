@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { isAgentMemoryFeatureAvailable } from '../agent-memory/feature-flag.js';
 import { isOverviewFeatureAvailable } from '../overview/feature-flag.js';
 import { isPermissionMode } from '../permission-auto-accept/modes.js';
-import { asNonEmptyString } from '../shared/guards.js';
+import { asNonEmptyString, isBoolean } from '../shared/guards.js';
 import { idleStopSchema } from '../spaces/idle-stop.js';
 import { sshHostSchema } from '../spaces/places/ssh-host.js';
 
@@ -578,13 +578,13 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.notifyOnQuestion === 'boolean') {
       result.notifyOnQuestion = candidate.notifyOnQuestion;
     }
-    if (typeof candidate.notifyOnWorkDone === 'boolean') {
+    if (isBoolean(candidate.notifyOnWorkDone)) {
       result.notifyOnWorkDone = candidate.notifyOnWorkDone;
     }
-    if (typeof candidate.notifyOnReviewReady === 'boolean') {
+    if (isBoolean(candidate.notifyOnReviewReady)) {
       result.notifyOnReviewReady = candidate.notifyOnReviewReady;
     }
-    if (typeof candidate.notifyOnWaitingOnYou === 'boolean') {
+    if (isBoolean(candidate.notifyOnWaitingOnYou)) {
       result.notifyOnWaitingOnYou = candidate.notifyOnWaitingOnYou;
     }
     if (candidate.notificationTemplates && typeof candidate.notificationTemplates === 'object') {

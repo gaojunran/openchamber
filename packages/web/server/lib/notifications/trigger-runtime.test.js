@@ -12,7 +12,7 @@ import { createNotificationTemplateRuntime } from './template-runtime.js';
  */
 const makeRuntime = ({ metadata = {}, settings = {}, verdict = null } = {}) => {
   const emitDesktopNotification = vi.fn(() => true);
-  const runtime = createNotificationTriggerRuntime({
+  const deps = {
     readSettingsFromDisk: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'always', notifyOnCompletion: true, ...settings }),
     prepareNotificationLastMessage: async ({ message }) => message,
     buildTemplateVariables: async () => ({}),
@@ -28,10 +28,9 @@ const makeRuntime = ({ metadata = {}, settings = {}, verdict = null } = {}) => {
     buildOpenCodeUrl: (path) => `http://opencode.test${path}`,
     getOpenCodeAuthHeaders: () => ({}),
     readSessionMetadata: async () => metadata,
-    ...(verdict
-      ? { turnEndVerdictFor: verdict.turnEndVerdictFor ?? (async () => verdict.scores ?? null) }
-      : {}),
-  });
+  };
+  if (verdict) deps.turnEndVerdictFor = verdict.turnEndVerdictFor ?? (async () => verdict.scores ?? null);
+  const runtime = createNotificationTriggerRuntime(deps);
   return { runtime, emitDesktopNotification };
 };
 
@@ -710,6 +709,22 @@ describe('turn-end verdict notifications', () => {
     // The pause never consults the verdict and never announces.
     expect(emitDesktopNotification).not.toHaveBeenCalled();
     expect(consulted).toEqual([]);
+  });
+
+  it('announces a ready for a user who opted into no verdict while a background task runs', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubSessionReads([
+      { type: 'assistant', finish: 'stop', content: [{ type: 'text', text: 'Migration is running in the background.' }] },
+      { type: 'assistant', content: [{ type: 'tool', state: { status: 'running' } }] },
+    ]);
+    const { runtime, emitDesktopNotification } = makeRuntime();
+
+    await runtime.maybeSendPushForTrigger(turnEnded('ses_v'));
+
+    // The pause only defers a verdict: with no verdict events on, the idle
+    // announces at once, as it did before the verdict events existed.
+    expect(emitDesktopNotification).toHaveBeenCalledTimes(1);
+    expect(emitDesktopNotification.mock.calls[0][0].kind).toBe('ready');
   });
 
   it('falls back to the generic copy when no verdict was asked (no battery, no settings)', async () => {

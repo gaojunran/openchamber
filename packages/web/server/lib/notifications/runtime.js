@@ -224,7 +224,7 @@ export const createNotificationTriggerRuntime = (deps) => {
    */
   const VERDICT_WAIT_MS = 2500;
   const awaitTurnEndVerdict = async (sessionId) => {
-    const pending = typeof turnEndVerdictFor === 'function' ? turnEndVerdictFor(sessionId) : null;
+    const pending = turnEndVerdictFor?.(sessionId) ?? null;
     if (!pending) return null;
     try {
       return await Promise.race([
@@ -605,9 +605,12 @@ export const createNotificationTriggerRuntime = (deps) => {
         // A turn that handed work to the session's own background tasks — a
         // shell, a browser task — is a pause, not a turn end: OpenCode wakes
         // the session when the task lands, and that turn's end is the one to
-        // announce. A page that cannot be read answers "nothing running": a
-        // missed ready is worse than an early one.
-        if (await fetchRunningTools(sessionId, source)) {
+        // announce. Only verdict events defer: a user who opted into none keeps
+        // the ready notification at the idle, and the message read it costs.
+        // A page that cannot be read answers "nothing running": a missed ready
+        // is worse than an early one.
+        const pausedForBackgroundWork = verdictEventsOn && await fetchRunningTools(sessionId, source);
+        if (pausedForBackgroundWork) {
           return;
         }
 

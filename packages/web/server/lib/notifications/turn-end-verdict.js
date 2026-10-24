@@ -21,6 +21,7 @@
  *   message with a `{source: 'shell', shellID}` metadata — the unmatched marker
  *   is the running shell (same shapes as the chat's `background-shell`).
  */
+import { isString } from '../shared/guards.js';
 import {
   NEEDS_YOU_THRESHOLD,
   REVIEW_READY_THRESHOLD,
@@ -52,7 +53,7 @@ const isRunningTool = (part) => part?.type === 'tool' && part?.state?.status ===
 const backgroundedShellID = (part) => {
   if (part?.type !== 'tool' || part?.state?.status !== 'completed') return null;
   const { status, shellID } = part.state.metadata ?? {};
-  return status === 'running' && typeof shellID === 'string' && shellID ? shellID : null;
+  return status === 'running' && isString(shellID) && shellID ? shellID : null;
 };
 
 /**
@@ -75,7 +76,7 @@ export const readRunningTools = (messages) => {
       }
     }
     const { source, shellID } = message?.metadata ?? {};
-    if (source === 'shell' && typeof shellID === 'string') ended.add(shellID);
+    if (source === 'shell' && isString(shellID)) ended.add(shellID);
   }
   return running || [...backgrounded].some((shellID) => !ended.has(shellID));
 };
