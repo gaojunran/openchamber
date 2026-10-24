@@ -40,11 +40,35 @@ const runMetadataSchema = z.object({
 
 const ENVELOPE = /^\s*<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>\s*$/
 
+// A run can also be reported by a tool that took it over: oh-my-opencode-slim's
+// `task revive` sends the child a new prompt, and reports the end of that run to
+// the parent in the envelope OpenCode 1.16's `task` tool used for its result,
+// followed by a comment that marks the message as the tool's own (`…</task>`
+// then `<!-- SLIM_INTERNAL_INITIATOR -->`). The envelope names the child, so the
+// run reads like any other report; without it the row keeps the failure of the
+// run before and the result is shown nowhere, because an unreadable synthetic
+// message renders as nothing.
+const TASK_ENVELOPE = /^\s*<task\s+id="([^"]+)"\s+state="(completed|error)">([\s\S]*?)<\/task>\s*(?:<!--[\s\S]*?-->\s*)?$/
+const TASK_BODY = /<task_(?:result|error)>\s*([\s\S]*?)\s*<\/task_(?:result|error)>/
+
+const readTaskEnvelopeRun = (message: SyntheticMessage): SubagentRun | undefined => {
+  const envelope = message.text.match(TASK_ENVELOPE)
+  if (!envelope) return undefined
+  const [, childSessionID, state, rest] = envelope
+  return {
+    childSessionID,
+    state: state === "completed" ? "completed" : "error",
+    description: message.description,
+    output: rest.match(TASK_BODY)?.[1] ?? "",
+    reportedAt: message.time.created,
+  }
+}
+
 /** The subagent run a message reports, or undefined for any other message. */
 export function readSubagentRun(message: Message): SubagentRun | undefined {
   if (message.role !== "synthetic") return undefined
   const parsed = runMetadataSchema.safeParse(message.metadata ?? {})
-  if (!parsed.success) return undefined
+  if (!parsed.success) return readTaskEnvelopeRun(message)
   const envelope = message.text.match(ENVELOPE)
   return {
     childSessionID: parsed.data.childID,
