@@ -5,10 +5,10 @@ import {
   findSubagentCancellation,
   findSubagentRun,
   isRunningSubagentRunMessage,
+  classifySubagentReports,
   readBackgroundSubagentChildID,
   readSubagentRun,
   runningSubagentRunMessage,
-  keepCommandSubagentReports,
   subagentCancellationNote,
 } from "./subagent-run"
 
@@ -148,14 +148,106 @@ describe("subagent calls that went to the background", () => {
       { info: report({ id: "msg_unknown", metadata: { source: "subagent", childID: "ses_unknown", state: "completed" } }), parts: [] },
     ]
     const startedAt = new Map([["ses_child", 6], ["ses_command", 7], ["ses_earlier", 1]])
-    const kept = keepCommandSubagentReports(records, (id) => startedAt.get(id))
-    expect(kept.map((record) => record.info.id)).toEqual(["msg_assistant", "msg_command"])
+    const { records: kept, completionNotices } = classifySubagentReports(records, (id) => startedAt.get(id))
+    // The called child's report stays, and reads as a notice instead of a row.
+    expect(kept.map((record) => record.info.id)).toEqual(["msg_assistant", "msg_report", "msg_command"])
+    expect([...completionNotices.keys()]).toEqual(["msg_report"])
   })
 
-  test("returns the same records when nothing is dropped", () => {
+  test("returns the same records when nothing is dropped or noticed", () => {
     const records = [{ info: report(), parts: [] }]
-    expect(keepCommandSubagentReports(records, () => 20)).toBe(records)
-})
+    const classified = classifySubagentReports(records, () => 20)
+    expect(classified.records).toBe(records)
+    expect(classified.completionNotices.size).toBe(0)
+  })
+
+  describe("a report of a run this transcript called", () => {
+    const withDescription = (description: string): ToolPart => ({
+      ...call({ sessionID: "ses_child" }),
+      state: {
+        status: "completed",
+        input: { description, agent: "general" },
+        output: "working in the background",
+        metadata: { sessionID: "ses_child" },
+        time: { start: 1, end: 2 },
+      },
+    })
+
+    test("keeps a completion notice named by the call", () => {
+      const records = [
+        { info: assistant, parts: [withDescription("review changes")] },
+        { info: report(), parts: [] },
+      ]
+      const classified = classifySubagentReports(records, () => 6)
+      expect(classified.records).toHaveLength(2)
+      expect(classified.completionNotices.get("msg_report")).toEqual({ description: "review changes" })
+    })
+
+    test("reads a task record another tool wrote for the same child", () => {
+      const revived: SyntheticMessage = {
+        id: "msg_task_record",
+        sessionID: "ses_parent",
+        role: "synthetic",
+        time: { created: 40 },
+        text: [
+          '<task id="ses_child" state="completed">',
+          '<summary>Background task completed: review changes</summary>',
+          '<task_result>',
+          '## Findings\n\nNone.',
+          '</task_result>',
+          '</task>',
+        ].join("\n"),
+        metadata: { "oh-my-opencode-slim.internalInitiator": true },
+      }
+      const records = [
+        { info: assistant, parts: [withDescription("review changes")] },
+        { info: revived, parts: [] },
+      ]
+      const classified = classifySubagentReports(records, () => 6)
+      expect(classified.records).toHaveLength(2)
+      expect(classified.completionNotices.get("msg_task_record")).toEqual({ description: "review changes" })
+    })
+
+    test("leaves a report that has not settled out, since the call's row shows it running", () => {
+      const records = [
+        { info: assistant, parts: [withDescription("review changes")] },
+        {
+          info: report({
+            id: "msg_running",
+            metadata: { source: "subagent", childID: "ses_child", state: "running" },
+          }),
+          parts: [],
+        },
+      ]
+      const classified = classifySubagentReports(records, () => 6)
+      expect(classified.records.map((record) => record.info.id)).toEqual(["msg_assistant"])
+      expect(classified.completionNotices.size).toBe(0)
+    })
+
+    test("keeps every report of the same child, so each run reads where it ended", () => {
+      const first = report({ id: "msg_first" })
+      const second = report({ id: "msg_second", time: { created: 30 } })
+      const records = [
+        { info: assistant, parts: [withDescription("review changes")] },
+        { info: first, parts: [] },
+        { info: second, parts: [] },
+      ]
+      const classified = classifySubagentReports(records, () => 6)
+      expect(classified.records.map((record) => record.info.id)).toEqual(["msg_assistant", "msg_first", "msg_second"])
+      expect([...classified.completionNotices.keys()]).toEqual(["msg_first", "msg_second"])
+    })
+
+    test("keeps a report of a command child that no call names", () => {
+      const command = report({ id: "msg_command", metadata: { source: "subagent", childID: "ses_command", state: "completed" } })
+      const records = [
+        { info: assistant, parts: [withDescription("review changes")] },
+        { info: command, parts: [] },
+      ]
+      const classified = classifySubagentReports(records, (id) => (id === "ses_command" ? 7 : undefined))
+      expect(classified.records.map((record) => record.info.id)).toEqual(["msg_assistant", "msg_command"])
+      expect(classified.completionNotices.size).toBe(0)
+    })
+  })
 })
 
 describe("stopping a subagent", () => {

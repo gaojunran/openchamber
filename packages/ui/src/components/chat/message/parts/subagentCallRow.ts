@@ -12,9 +12,10 @@
  * wins over the report of an earlier run; otherwise the row keeps a failure and
  * a stopped clock while the child works again.
  *
- * The report itself is not shown as a row of its own
- * (`keepCommandSubagentReports`), so the subagent stays where it was started
- * instead of reappearing at the end of the chat.
+ * The report itself does not open a row of its own for a call the transcript
+ * shows (`classifySubagentReports`), so the subagent stays where it was started
+ * instead of reappearing at the end of the chat; its completion notice says
+ * there how the run ended.
  */
 
 import type { ToolPart } from '@/lib/opencode/model';

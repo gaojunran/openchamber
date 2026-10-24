@@ -5,6 +5,7 @@ import { RuntimeAPIContext } from '@/contexts/runtimeAPIContext';
 import { cn } from '@/lib/utils';
 import { SimpleMarkdownRenderer } from '../../MarkdownRenderer';
 import { BlockLine } from './BlockLine';
+import { formatRunDuration, formatToolDuration } from './toolDuration';
 import { FormMarkdown } from '../../FormMarkdown';
 import { MessageFilesDisplay } from '../../FileAttachment';
 import { getToolMetadata } from '@/lib/toolHelpers';
@@ -134,21 +135,13 @@ interface ToolPartProps {
     failureReason?: string;
 }
 
-// A finished run shows tenths; a running one counts whole seconds on the
-// shared 1 s tick, so a live row redraws once a second, in step with the
-// session list's counter.
-const formatDuration = (start: number, end?: number, now: number = Date.now()) => {
-    if (end === undefined) {
-        return `${Math.floor(Math.max(0, now - start) / 1000)}s`;
-    }
-    const seconds = Math.max(0, end - start) / 1000;
-    return `${Math.max(0.1, seconds).toFixed(1)}s`;
-};
-
-const LiveDuration: React.FC<{ start: number; end?: number; active: boolean }> = ({ start, end, active }) => {
+const LiveDuration: React.FC<{ start: number; end?: number; active: boolean; scale?: 'run' }> = ({ start, end, active, scale }) => {
     const now = useDurationTickerNow(active);
+    // A tool call lasts seconds; a subagent run lasts minutes, so its length
+    // reads as one (`29m 44s`) instead of counting to four digits.
+    const format = scale === 'run' ? formatRunDuration : formatToolDuration;
 
-    return <>{formatDuration(start, end, now)}</>;
+    return <>{format(start, end, now)}</>;
 };
 
 const deferredToolBodyMounts: Array<{ active: boolean; fn: () => void }> = [];
@@ -903,7 +896,7 @@ const useSubagentChildSessionId = (part: ToolPartType, directory: string): strin
 };
 
 /** Header action of a subagent row: opens the child session, whose own chat shows its work. */
-const OpenSubtaskButton: React.FC<{
+export const OpenSubtaskButton: React.FC<{
     sessionId: string;
     agent: string | undefined;
     isMobile: boolean;
@@ -1581,6 +1574,8 @@ type ToolRowHeader = {
     label?: 'background' | 'stopped';
     /** The end of the call is not known yet, so the row shows no duration. */
     durationUnknown?: boolean;
+    /** A subagent run is minutes long, so its length reads as one rather than in seconds. */
+    durationScale?: 'run';
     stop?: { onStop: () => void; ariaLabel: string };
 };
 
@@ -2040,6 +2035,7 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
                                         start={effectiveTimeStart}
                                         end={typeof effectiveTimeEnd === 'number' ? effectiveTimeEnd : undefined}
                                         active={Boolean(isActive && typeof effectiveTimeEnd !== 'number')}
+                                        scale={header?.durationScale}
                                     />
                                 </span>
                             ) : null}
@@ -2346,6 +2342,7 @@ const SubagentToolPartContent: React.FC<ToolPartProps> = (props) => {
         // "in background" describes a background call still running; a finished
         // one, and a foreground call revived in place, are just running.
         label: stopped ? 'stopped' : backgroundChildID !== undefined && phase?.kind === 'running' ? 'background' : undefined,
+        durationScale: 'run',
         durationUnknown: phase?.kind === 'unknown',
         stop: isRunning && childSessionID && !stopping
             ? { onStop: stop, ariaLabel: t('chat.toolPart.subagent.stop') }

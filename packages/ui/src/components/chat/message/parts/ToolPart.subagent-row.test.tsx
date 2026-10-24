@@ -165,7 +165,7 @@ test('a finished subagent is one row with its duration and an open action, never
   await withHarness(parent, false, async (store, container) => {
     await act(async () => store.setState(childActivity('child')));
     expect(container.textContent).toContain('Update files');
-    expect(container.textContent).toContain('62.0s');
+    expect(container.textContent).toContain('1m 2s');
     expect(openButton(container)).not.toBeNull();
     expect(container.textContent).not.toContain('child-work.ts');
     expect(container.textContent).not.toContain('Found two files');
