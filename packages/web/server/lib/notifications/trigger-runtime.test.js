@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createNotificationTriggerRuntime } from './runtime.js';
 import { createNotificationTemplateRuntime } from './template-runtime.js';
+import { translateWireEvent } from '../event-stream/translate-v2.js';
 
 /**
  * The "ready" push is built from the translated `message.updated` events.
@@ -104,29 +105,52 @@ describe('ready notification on v2 step events', () => {
 });
 
 describe('error notification on v2 step failures', () => {
-  const stepFailed = (sessionID, id, error) => ({
-    type: 'message.updated',
-    properties: { sessionID, info: { id, sessionID, role: 'assistant', finish: 'error', error, time: { completed: 3 } } },
-  });
+  // Payloads come from the translator, so the marker this test pins is the one
+  // the trigger really receives, not a hand-written shape.
+  const stepFailed = (sessionID, id, error) => translateWireEvent({
+    type: 'session.step.failed',
+    id: `evt_${id}`,
+    created: 3,
+    data: { sessionID, assistantMessageID: id, error },
+  })[0];
 
   it('announces a failed turn, but not one the user interrupted', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { runtime, emitDesktopNotification } = makeRuntime();
 
-    // An interrupted step ends as `finish: 'error'` with an `aborted` error
-    // (stop, steering input, a dismissed question): not an agent error.
-    await runtime.maybeSendPushForTrigger(stepFailed('ses_4', 'msg_4', {
-      name: 'aborted',
-      type: 'aborted',
-      message: 'Step interrupted',
-    }));
+    // An interrupted step ends here with `{ type: 'aborted' }` (core
+    // `session/runner/step.ts` STEP_INTERRUPTED: stop, steering, a dismissed
+    // question): the turn stopped, it did not fail.
+    await runtime.maybeSendPushForTrigger(stepFailed('ses_4', 'msg_4', { type: 'aborted', message: 'Step interrupted' }));
     expect(emitDesktopNotification).not.toHaveBeenCalled();
 
     await runtime.maybeSendPushForTrigger(stepFailed('ses_5', 'msg_5', {
-      name: 'provider.transport',
       type: 'provider.transport',
       message: 'Timed out waiting for response data',
     }));
+    expect(emitDesktopNotification).toHaveBeenCalledTimes(1);
+    expect(emitDesktopNotification.mock.calls[0][0]).toMatchObject({ kind: 'error' });
+  });
+
+  it('announces nothing when an execution fails with an abort error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { runtime, emitDesktopNotification } = makeRuntime();
+    const execution = (sessionID, error) => translateWireEvent({
+      type: 'session.execution.failed',
+      id: `evt_${sessionID}`,
+      created: 4,
+      data: { sessionID, error },
+    });
+
+    // An execution restarted out of retries reports the same abort type.
+    for (const event of execution('ses_6', { type: 'aborted', message: 'Execution was interrupted repeatedly' })) {
+      await runtime.maybeSendPushForTrigger(event);
+    }
+    expect(emitDesktopNotification).not.toHaveBeenCalled();
+
+    for (const event of execution('ses_7', { type: 'provider.transport', message: 'Connection reset' })) {
+      await runtime.maybeSendPushForTrigger(event);
+    }
     expect(emitDesktopNotification).toHaveBeenCalledTimes(1);
     expect(emitDesktopNotification.mock.calls[0][0]).toMatchObject({ kind: 'error' });
   });
