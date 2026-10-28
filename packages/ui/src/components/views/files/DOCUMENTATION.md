@@ -49,7 +49,12 @@ unsaved-changes prompt that may come first) goes through `onCloseFile` to
 including the panel's open state, its active tab, and the editor toggle, to each file surface.
 Hidden surfaces retain drafts, loaded content and scroll state. They stop
 directory and file metadata polling; reopening checks freshness once before
-normal polling resumes. Autosave is independent of visibility.
+normal polling resumes. The visible open file is watched by OpenCode
+(`lib/watchedFiles.ts`, OpenCode 2.2): its `filesystem.changed` event starts
+the same freshness check at once, and the check otherwise runs every 30
+seconds instead of every 2, only to cover a watch OpenCode lost. A file
+outside the project folder, or an OpenCode that refuses the watch, keeps the
+2-second poll. An open plan in the repository is watched the same way. Autosave is independent of visibility.
 
 Background polling never supersedes an in-flight directory read. Explicit
 refresh after file mutations does. Each directory failure remains local and
@@ -187,6 +192,29 @@ through `getRuntimeUrlResolver().authenticatedAsset('/api/fs/raw', …)` with
 the scoped URL token; the server streams byte ranges so playback can seek.
 Images keep the object-URL/data-URL path.
 
+`useRawAssetUrl` makes that URL once per file, revision and runtime and holds
+it, so the shared token rotating never touches an open preview: a PDF stays
+on its page, a player keeps playing, a font stays registered. The server
+checks the token when a request starts, so a held URL keeps working for the
+document it already loads. A player asks for more ranges later, and one asked
+for after the token expired gets a 401; `MediaArtifact` then asks `renew` for
+a URL with a fresh token and resumes at the same position, speed and play
+state. One
+renewal per ten seconds; a renewal that returns the same URL, or fails, shows
+"cannot be played". A file changed on disk bumps the revision, which gives the
+preview a new URL and loads the new bytes.
+
+### Why the URL is held and not rebuilt with every new token
+
+A rebuilt URL is a new document: the iframe navigates and the media element
+reloads, which put PDFs back on page 1 and stopped playback each time the
+token rotated, about every 45 seconds. A longer token or a per-file grant
+like the HTML preview's would also keep late ranges authorized, but would
+widen what a URL in the page can open. A PDF and a font load their bytes when
+they open, so only media asks for ranges late, and the renewal covers it
+without changing any server check. A PDF still downloading when its token
+expires, a very large file over a slow link, is the case this leaves open.
+
 An HTML file's preview is untrusted content. `useHtmlPreviewUrl` asks the
 server for a grant (`POST /api/fs/preview`) and loads the page from
 `/api/fs/preview/<grant>/<path>`; the frame's `sandbox` has no
@@ -223,14 +251,14 @@ as is, but left web without annotation and given the Files view two preview
 engines. The bridge works the same in both, and gives the app no reach into
 the page that the page's own scripts lack.
 
-The Markdown preview renders the file's raw HTML the way GitHub does
-(`SimpleMarkdownRenderer allowRawHtml`): right after marked, a separate
-DOMPurify instance keeps a GitHub-like allowlist (`markdownSecurity.ts`:
-`picture`/`source`, `img`, `a`, `details`, `sub`/`sup`, `kbd`, aligned
-blocks) and drops author styles, classes, ids, data attributes, handlers,
-forms and embeds. Chat keeps raw HTML inert. A numeric `img height` becomes
-an inline height, because Tailwind preflight's `height: auto` would beat the
-attribute.
+The Markdown preview uses `SimpleMarkdownRenderer allowRawHtml`, sharing
+Streamdown processing with reference descriptions and comments. The policy in
+`chat/markdown/streamdownPlugins.ts` enables raw parsing, a restricted rehype
+sanitizer and Streamdown hardening. It permits document elements such as
+`picture`/`source`, `img`, `a`, `details`, `sub`/`sup`, `kbd` and aligned blocks.
+Author styles, application classes, handlers, forms and embeds are excluded.
+Chat keeps raw HTML inert. Media components own safe image dimensions so an
+HTML height or aspect ratio is not lost to Tailwind preflight.
 
 A Markdown file's frontmatter shows above its body (`SimpleMarkdownRenderer
 frontmatter="properties"`, also used by the plan view): a YAML mapping
@@ -239,15 +267,38 @@ as YAML; TOML (`+++`), invalid YAML and non-mapping YAML show as the block
 was written. The skill editor hides it (`frontmatter="hide"`) because the
 description has its own field there.
 
-`useMarkdownLocalAssets` makes a rendered Markdown file's relative images and
-links work: images and `srcset` candidates are fetched through the runtime
-against the file's own directory (outside the workspace when the file is) and
-swapped for object URLs that are revoked with the preview; relative links
-open the target file through `useUIStore.openContextFile`, which the context
-panel and the mobile files surface both consume. A `<source
-media="(prefers-color-scheme: …)">` follows the app theme, not the OS: the
-feature is rewritten to an always-true or never-true query and re-evaluated
-when the theme changes.
+`useMarkdownLocalAssets` supplies the file path, workspace scope, file-open
+callback and app color scheme before rendering. `MarkdownMediaContext`
+resolves relative images and `srcset` candidates through the runtime against
+the file's own directory, including files outside the workspace. React media
+nodes receive the resulting object URLs; their owner revokes them when the
+preview changes or unmounts. Relative links open through the supplied
+`useUIStore.openContextFile` callback, shared by the context panel and mobile
+files view. Fragment links find a heading within the Markdown root. A source's
+`prefers-color-scheme` condition follows the app theme through its rendered
+`media` prop. Content, file and runtime changes retire older asset results.
+
+A document image is read once it comes within one height of the preview's
+scroller of its visible part (`useNearMedia` with the nearest ancestor that
+scrolls vertically as root; a table that scrolls sideways does not count). A `<picture>` is watched as a whole, since its sources have
+no box, and a source whose `media` does not hold, the other theme's for one,
+is read only once it does. The candidates of one `srcset` are all read when
+their image is near.
+
+### Why a document image waits until it is near the view
+
+The preview read every image when it opened: a README with 100 screenshots of
+2.8 MB read 280 MB and grew the browser by about 600 MB while two pictures
+were on screen (#5320). The observer's root is the preview's scroller, because
+a margin on the viewport is clipped by that scroller and an image would start
+loading only once already visible. Read files stay until the preview closes:
+releasing one far away would collapse its height and move the text being read.
+
+### Why document assets resolve before node updates
+
+Media and link components own their resources and cleanup. Rewriting the
+rendered Markdown's `src`, `srcset` or `media` attributes would compete with
+React and could publish an old document's assets after a preview switch.
 
 An agent can ask for a file to be shown (`file.open` on the managed
 `openchamber` tool). The server broadcasts `openchamber:file-open-request`;

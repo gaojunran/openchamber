@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { openExternalUrl } from '@/lib/url';
 import { opencodeClient } from '@/lib/opencode/client';
+import { getIntegrationClient } from '@/lib/opencode/integration-catalog';
 import {
   collectFieldAnswer,
   defaultFieldValues,
@@ -30,15 +31,18 @@ interface ProviderOAuthMethodsProps {
   /** Called once a credential has been stored, so the caller can reload providers. */
   onConnected: () => void | Promise<void>;
   /**
-   * Location the integration belongs to. Provider integrations are global;
-   * an MCP server's OAuth integration exists only in the Location whose config
-   * declares the server, so its requests must resolve that directory.
+   * Location the integration belongs to. An MCP server's OAuth integration
+   * exists only in the Location whose config declares the server, so its
+   * requests must resolve that directory. Without one, requests go where the
+   * integration list is read (`getIntegrationClient`).
    */
   directory?: string | null;
   /** Layout only — the caller owns separation from whatever sits above. */
   className?: string;
   /** Start the only sign-in method on mount, for a sign-in the user just asked for elsewhere. */
   autoStart?: boolean;
+  /** Off when a surrounding card already names the method. */
+  showMethodLabels?: boolean;
 }
 
 type Flow =
@@ -78,12 +82,17 @@ export const ProviderOAuthMethods: React.FC<ProviderOAuthMethodsProps> = ({
   directory,
   className,
   autoStart = false,
+  showMethodLabels = true,
 }) => {
   const { t } = useI18n();
-  const sdk = React.useCallback(
-    () => (directory ? opencodeClient.getScopedSdkClient(directory) : opencodeClient.getSdkClient()),
+  // Picked once per directory prop: OpenCode keeps an OAuth attempt in the
+  // location that started it, so status, complete and cancel must not follow
+  // the app to another project mid-flow.
+  const client = React.useMemo(
+    () => (directory ? opencodeClient.getScopedSdkClient(directory) : getIntegrationClient()),
     [directory],
   );
+  const sdk = React.useCallback(() => client, [client]);
   const [flow, setFlow] = React.useState<Flow>(IDLE);
   const [fieldValues, setFieldValues] = React.useState<Record<string, FormValue>>({});
   const [codeInput, setCodeInput] = React.useState('');
@@ -357,7 +366,7 @@ export const ProviderOAuthMethods: React.FC<ProviderOAuthMethodsProps> = ({
         return (
           <div key={method.id} className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="typography-ui-label text-foreground">{method.label}</div>
+              {showMethodLabels ? <div className="typography-ui-label text-foreground">{method.label}</div> : null}
               <Button
                 variant="outline"
                 size="xs"

@@ -8,9 +8,11 @@ the UI is on a different machine.
 
 ## Contract
 
-- Assistant image syntax renders as an icon and filename. Once a text part
-  settles, the chat replaces each label with the picture
-  (`packages/ui/src/components/chat/markdown/inlineMarkdownImages.ts`).
+- Assistant image syntax initially renders as a filename label. Once a text
+  part settles and its media nears the viewport, React-owned `MarkdownMedia`
+  components load the picture through the scoped `MarkdownMediaProvider`
+  (`packages/ui/src/components/chat/markdown/`). The chat draws at most 12
+  images per text part. No rendered-subtree rewriting is involved.
 - `POST /api/openchamber/sessions/:sessionId/markdown-image-grants` prepares the
   local images of a message part in one request, with no count limit; the
   256 KB body limit bounds how many paths fit, enough for a page of several
@@ -25,6 +27,11 @@ the UI is on a different machine.
   input, which OpenCode stores with the message. The chat reads them as data
   URLs and puts them in the page
   (`packages/ui/src/components/chat/message/parts/renderPageImages.ts`).
+- The files a finished `openchamber_image` call saved are referenced too
+  (`generatedImageSources`): the paths its stored result envelope names
+  (`generatedImagePaths` in `../openchamber-control/generate-image.js`). The
+  chat draws them in place of the call's row
+  (`packages/ui/src/components/chat/message/parts/GeneratedImages.tsx`).
 - A request that names the page's tool call (`callId`) gets that page's images
   in page order while their files add up to at most 25 MB
   (`fitRenderPageImages`); from the first image past it on, every image of the

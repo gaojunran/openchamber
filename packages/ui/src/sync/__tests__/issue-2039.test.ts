@@ -214,6 +214,7 @@ mock.module("@/stores/useSkillsStore", () => ({
     }),
   },
   selectSkillsForDirectory: () => [],
+  selectAvailableSkillsForDirectory: () => [],
 }))
 
 mock.module("@/components/ui", () => ({
@@ -342,6 +343,9 @@ mock.module("../session-actions", () => ({
     return session
   }),
   forkAfterMessage: mock(async () => undefined),
+  adoptSessionMove: () => undefined,
+  markSessionStatus: () => undefined,
+  openPendingSessionTranscript: () => undefined,
   deleteSession: mock(async () => true),
   deleteSessions: mock(async () => ({ deletedIds: [], failedIds: [] })),
   archiveSession: mock(async () => true),
@@ -364,6 +368,7 @@ mock.module("../session-actions", () => ({
 
 mock.module("@/lib/git/branchNameGenerator", () => ({
   generateBranchName: () => "generated-branch",
+  generatedBranchPrefix: (name: string) => (name === "generated-branch" ? "" : null),
 }))
 
 mock.module("@/lib/openchamberConfig", () => ({

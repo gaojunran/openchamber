@@ -9,7 +9,9 @@ import { ConfigUpdateOverlay } from '@/components/ui/ConfigUpdateOverlay';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { OpenCodeUpdateToast } from '@/components/update/OpenCodeUpdateToast';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
+import { SnippetQuickCreateDialog } from '@/components/snippets/SnippetQuickCreateDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
+import { OpenCodeTrustDialog } from '@/components/projects/OpenCodeTrustDialog';
 import { VSCodeLayout } from '@/components/layout/VSCodeLayout';
 import { useEnterprisePolicySync } from '@/hooks/useEnterprisePolicySync';
 import { usePushVisibilityBeacon } from '@/hooks/usePushVisibilityBeacon';
@@ -26,6 +28,7 @@ import { toast } from '@/components/ui';
 import { opencodeClient } from '@/lib/opencode/client';
 import type { RuntimeAPIs } from '@/lib/api/types';
 import { useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
+import { useSourceControlProviderRegistry } from '@/lib/source-control/providers/registry';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { onHostSurfaceSeen } from '@/lib/surfaceAttention';
@@ -77,6 +80,7 @@ export function VSCodeApp({ apis }: VSCodeAppProps) {
   const clearError = useSessionUIStore((state) => state.clearError);
   const wideChatLayoutEnabled = useUIStore((state) => state.wideChatLayoutEnabled);
   const refreshSourceControlAuth = useSourceControlAuthStore((state) => state.refreshAll);
+  const refreshSourceControlProviders = useSourceControlProviderRegistry((state) => state.refresh);
 
   React.useEffect(() => {
     registerRuntimeAPIs(apis);
@@ -117,8 +121,9 @@ export function VSCodeApp({ apis }: VSCodeAppProps) {
   }, [wideChatLayoutEnabled]);
 
   React.useEffect(() => {
+    void refreshSourceControlProviders(apis.sourceControl);
     void refreshSourceControlAuth(apis.sourceControl, { force: true });
-  }, [apis.sourceControl, refreshSourceControlAuth]);
+  }, [apis.sourceControl, refreshSourceControlAuth, refreshSourceControlProviders]);
 
   React.useEffect(() => {
     if (!error) {
@@ -143,7 +148,9 @@ export function VSCodeApp({ apis }: VSCodeAppProps) {
                   </>
                 )}
                 <AppLinkConfirmDialog />
+                <SnippetQuickCreateDialog />
                 <SharedTrustConfirmDialog />
+                <OpenCodeTrustDialog />
                 <OpenCodeUpdateToast />
                 <Toaster position="top-center" />
                 <ConfigUpdateOverlay />

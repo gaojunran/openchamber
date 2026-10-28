@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import { createUiPasskeys } from './ui-passkeys.js';
 import { sessionCookieNameForRequest } from './session-cookie.js';
+import { sourceControlProviderDescriptors } from '../source-control/provider-descriptors.js';
 
 const SESSION_COOKIE_NAME = 'oc_ui_session';
 const HOUR_MS = 60 * 60 * 1000;
@@ -328,6 +329,12 @@ const isGuestScopedPath = (pathname, guestId) => pathname.startsWith(`/api/guest
 const SPACE_RAW_FILE_PATH = /^\/api\/spaces\/[0-9a-f]{12}\/fs\/raw$/;
 const SPACE_WS_PATH = /^\/api\/spaces\/[0-9a-f]{12}\/(?:terminal\/ws|dev-tunnel|event\/ws|global\/event\/ws)$/;
 
+// Pictures and clips in an issue or change request, loaded by `img` and
+// `video`, for each provider that serves uploads.
+const SOURCE_CONTROL_UPLOAD_PREFIXES = Object.freeze(sourceControlProviderDescriptors.list()
+  .filter((descriptor) => descriptor.capabilities.uploads)
+  .map((descriptor) => `/api/source-control/${descriptor.id}/uploads/`));
+
 const isUrlAuthReadableHttpPath = (pathname) => {
   return pathname === '/api/event'
     || pathname === '/api/global/event'
@@ -335,8 +342,7 @@ const isUrlAuthReadableHttpPath = (pathname) => {
     || pathname === '/api/openchamber/realtime-proxy/sse'
     || pathname === '/api/notifications/stream'
     || pathname === '/api/fs/raw'
-    // GitLab pictures and clips in an issue or merge request, loaded by `img` and `video`.
-    || pathname.startsWith('/api/source-control/gitlab/uploads/')
+    || SOURCE_CONTROL_UPLOAD_PREFIXES.some((prefix) => pathname.startsWith(prefix))
     || pathname.startsWith('/api/preview/proxy/')
     || /^\/api\/projects\/[^/]+\/icon$/.test(pathname)
     || pathname === '/api/guests'
@@ -476,7 +482,9 @@ export const createUiAuth = ({
     const token = `${URL_AUTH_TOKEN_PREFIX}${crypto.randomBytes(24).toString('base64url')}`;
     const expiresAt = Date.now() + URL_AUTH_TOKEN_TTL_MS;
     urlAuthTokens.set(token, { sessionToken, expiresAt, scope });
-    return { token, expiresAt };
+    // `expiresAt` is on this server's clock. `expiresIn` lets a client whose
+    // clock disagrees place the expiry on its own clock.
+    return { token, expiresAt, expiresIn: URL_AUTH_TOKEN_TTL_MS };
   };
 
   const authenticateUrlAuthToken = (req) => {

@@ -16,6 +16,8 @@ import { createHttpsCredentialReference, createSshCredentialReference } from './
 import { createNetworkOperations, createTrustedDirectoriesConfig } from './network-operations.js';
 import { createBindingService } from '../source-control/binding-service.js';
 import { createBindingStore } from '../source-control/binding-storage.js';
+import { createProviderDescriptors } from '../source-control/provider-descriptors.js';
+import { giteaDescriptor } from '../gitea/descriptor.js';
 import { resolveRepositoryIdentity } from '../source-control/repository-identity.js';
 
 const SHA = 'a'.repeat(40);
@@ -27,7 +29,7 @@ const CLONE_CREDENTIAL = {
   credentialRevision: 3,
   providerUserId: 'https://example.com#42',
   status: 'valid',
-  token: 'clone-secret',
+  secret: 'clone-secret',
 };
 const temporaryDirectories = [];
 const execFileAsync = promisify(execFile);
@@ -132,7 +134,7 @@ const createSpawn = (results = [], responder) => {
   return { spawnImpl, calls, children };
 };
 
-const setup = ({ mode = 'managed', transport = 'https', credentialId = 'opaque-credential', keyPath = '/keys/selected key', spawnResults, spawnResponder, env, timeoutMs, fsImpl, validateGitIdentity = async () => {}, validateManagedSshCredential, resolveSourceControlAccount = vi.fn(async () => CLONE_CREDENTIAL), applyGitIdentity, bindClonedRepository = async () => {}, inspectMergeState, enumerateManagedConfigKeys = vi.fn(async () => []), resolveChangeRequestSource, validateGitAuxiliaryContext, onCheckoutHydrated, auditStore, operationStore, authorityFor, trustedDirectoriesConfig } = {}) => {
+const setup = ({ mode = 'managed', transport = 'https', credentialId = 'opaque-credential', keyPath = '/keys/selected key', spawnResults, spawnResponder, env, timeoutMs, fsImpl, validateGitIdentity = async () => {}, validateManagedSshCredential, resolveSourceControlAccount = vi.fn(async () => CLONE_CREDENTIAL), applyGitIdentity, bindClonedRepository = async () => {}, inspectMergeState, enumerateManagedConfigKeys = vi.fn(async () => []), resolveChangeRequestSource, validateGitAuxiliaryContext, onCheckoutHydrated, auditStore, operationStore, authorityFor, trustedDirectoriesConfig, sourceControlProviders } = {}) => {
   const authority = {
     endpoint: transport === 'ssh' ? 'git@example.com:owner/repository.git' : ENDPOINT,
     endpointFingerprint: fingerprintRemoteUrl(transport === 'ssh' ? 'git@example.com:owner/repository.git' : ENDPOINT),
@@ -192,6 +194,7 @@ const setup = ({ mode = 'managed', transport = 'https', credentialId = 'opaque-c
     auditStore,
     operationStore,
     trustedDirectoriesConfig,
+    sourceControlProviders,
   });
   return { service, authority, validateGitTransportContext, resolveRef, resolveSymbolicRef, credentialResolver, credentialBroker, ...spawned };
 };
@@ -1475,6 +1478,54 @@ process.exit(safe ? 0 : 1);
     expect(setupValue.credentialBroker.revoke).toHaveBeenCalledWith(plan.operationId);
   });
 
+  it('pushes for review with the composed refspec, writes no tracking ref, and stops when the gate closed', async () => {
+    const changeHost = { ...giteaDescriptor, id: 'review', capabilities: { ...giteaDescriptor.capabilities, createVia: 'push' } };
+    let primaryOf = ['review'];
+    const reviewSetup = () => setup({
+      sourceControlProviders: createProviderDescriptors([giteaDescriptor, changeHost]),
+      authorityFor: (_input, authority) => ({ ...authority, primaryOf }),
+      spawnResponder: ({ args }) => (args.includes('check-ref-format') ? { code: 0, stdout: 'main\n' } : undefined),
+    });
+    const reviewRequest = request('push', { review: { target: 'main', topic: 'sync', wip: true } });
+    delete reviewRequest.destinationRef;
+
+    const setupValue = reviewSetup();
+    const plan = await setupValue.service.plan(reviewRequest);
+    expect(plan.target.destinationRef).toBe('refs/for/main');
+    await expect(setupValue.service.execute(plan.operationId)).resolves.toMatchObject({ state: 'succeeded' });
+    const pushes = setupValue.calls.filter((call) => call.args.includes('push'));
+    expect(pushes.map((call) => call.args.slice(-3))).toEqual([['--', ENDPOINT, `${SHA}:refs/for/main%topic=sync,wip`]]);
+    expect(setupValue.calls.some((call) => call.args.includes('update-ref'))).toBe(false);
+
+    // The association went away between plan and execute: nothing is sent.
+    const closed = reviewSetup();
+    const closedPlan = await closed.service.plan(reviewRequest);
+    primaryOf = [];
+    await expect(closed.service.execute(closedPlan.operationId)).resolves.toMatchObject({ state: 'conflicted', error: { code: 'REMOTE_CHANGED' } });
+    expect(closed.calls.some((call) => call.args.includes('push'))).toBe(false);
+  });
+
+  it('leads a refused push\'s error with the remote\'s rejection, without its progress output', async () => {
+    const stderr = [
+      'remote: Processing changes: refs: 1',
+      'remote: Processing changes: refs: 1, done',
+      'remote: ERROR: commit 1a2b3c4: missing Change-Id in message footer',
+      'remote:',
+      'remote: Hint: to automatically insert a Change-Id, install the hook:',
+      'To https://example.com/owner/repository.git',
+      ' ! [remote rejected] abc -> refs/for/main (commit 1a2b3c4: missing Change-Id in message footer)',
+      'error: failed to push some refs to \'https://example.com/owner/repository.git\'',
+    ].join('\n');
+    const setupValue = setup({ spawnResponder: ({ args }) => (args.includes('push') ? { code: 1, stderr } : undefined) });
+    const plan = await setupValue.service.plan(request());
+    const result = await setupValue.service.execute(plan.operationId);
+    expect(result.state).toBe('failed');
+    expect(result.error.message.split('\n')).toEqual([
+      '! [remote rejected] abc -> refs/for/main (commit 1a2b3c4: missing Change-Id in message footer)',
+      'remote: ERROR: commit 1a2b3c4: missing Change-Id in message footer',
+    ]);
+  });
+
   it('configures the exact local upstream only after a successful push', async () => {
     const setupValue = setup();
     const plan = await setupValue.service.plan(request('push', { configureUpstream: true }));
@@ -1516,11 +1567,53 @@ process.exit(safe ? 0 : 1);
     const result = await setupValue.service.execute(plan.operationId);
 
     expect(result.state).toBe('succeeded');
-    expect(setupValue.calls).toHaveLength(2);
-    expect(setupValue.calls[0].args.slice(-4)).toEqual([
+    expect(setupValue.calls).toHaveLength(3);
+    expect(setupValue.calls[0].args.slice(-5)).toEqual(['ls-remote', '--symref', '--', ENDPOINT, 'HEAD']);
+    expect(setupValue.calls[1].args.slice(-4)).toEqual([
       'push', '--', ENDPOINT, ':refs/heads/published',
     ]);
-    expect(setupValue.calls[1].args.slice(-3)).toEqual(['update-ref', '-d', 'refs/remotes/publish/published']);
+    expect(setupValue.calls[2].args.slice(-3)).toEqual(['update-ref', '-d', 'refs/remotes/publish/published']);
+  });
+
+  it('asks for the remote default branch on a credential lease of its own', async () => {
+    const setupValue = setup();
+    const revoked = [];
+    let issued = 0;
+    setupValue.credentialBroker.issue.mockImplementation(() => {
+      const lease = ++issued;
+      return { gitConfigArgs: ['-c', `credential.helper=!broker nonce-${lease}`], revoke: vi.fn(() => { revoked.push(lease); }) };
+    });
+    const input = request();
+    delete input.sourceRef;
+    input.operation = 'delete-remote-branch';
+    const plan = await setupValue.service.plan(input);
+
+    const result = await setupValue.service.execute(plan.operationId);
+
+    expect(result.state).toBe('succeeded');
+    const probe = setupValue.calls.find((call) => call.args.includes('ls-remote'));
+    const push = setupValue.calls.find((call) => call.args.includes('push'));
+    expect(probe.args).toContain('credential.helper=!broker nonce-1');
+    expect(push.args).toContain('credential.helper=!broker nonce-2');
+    expect(revoked).toEqual([1, 2]);
+  });
+
+  it('refuses to delete the branch the remote names as its default', async () => {
+    const setupValue = setup({
+      spawnResponder: (call) => (call.args.includes('ls-remote')
+        ? { code: 0, stdout: `ref: refs/heads/published\tHEAD\n${SHA}\tHEAD\n` }
+        : undefined),
+    });
+    const input = request();
+    delete input.sourceRef;
+    input.operation = 'delete-remote-branch';
+    const plan = await setupValue.service.plan(input);
+
+    const result = await setupValue.service.execute(plan.operationId);
+
+    expect(result.state).toBe('failed');
+    expect(result.error).toEqual({ code: 'INVALID_REQUEST', message: "The remote's default branch can't be deleted" });
+    expect(setupValue.calls.some((call) => call.args.includes('push'))).toBe(false);
   });
 
   it('resets each discovered CA and client certificate setting by its exact key', async () => {

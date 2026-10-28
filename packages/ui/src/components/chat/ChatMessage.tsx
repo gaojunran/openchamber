@@ -1,6 +1,7 @@
 import React from 'react';
 import { modelVariantNames } from '@/lib/modelVariants';
 import { findCatalogModel, type Message, type Part } from '@/lib/opencode/model';
+import { readPromptOrigin } from '@/lib/opencode/prompt-origin';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MessageFreshnessDetector } from '@/lib/messageFreshness';
@@ -24,6 +25,7 @@ import type { StreamPhase, ToolPopupContent } from './message/types';
 import { deriveMessageRole } from './message/messageRole';
 import { filterVisibleParts, normalizeParts } from './message/partUtils';
 import { normalizeUserDisplayParts } from './message/normalizeUserDisplayParts';
+import { useSourceControlDescriptorOf } from '@/lib/source-control/providers/registry';
 import { isHiddenUserMessage } from './message/hiddenUserMessage';
 import { flattenAssistantTextParts, flattenUserTextParts } from '@/lib/messages/messageText';
 import { assistantErrorNotice } from '@/lib/messages/assistantError';
@@ -38,6 +40,7 @@ import type { ReviewTransferDirection } from '@/lib/reviewFlow';
 import { toast } from 'sonner';
 import { useCopyMessageLink } from './message/useCopyMessageLink';
 import { useI18n } from '@/lib/i18n';
+import { useSnippetsStore } from '@/stores/useSnippetsStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { getContextObligatoryMessages } from '@/lib/contextObligatoryMessages';
 import { setContextObligatoryMessage } from '@/sync/session-actions';
@@ -79,12 +82,12 @@ function useStickyDisplayValue<T>(value: T | null | undefined): T | null | undef
 // Assistant text goes to the clipboard as Markdown with its rendered HTML,
 // or as the plain text the reader sees when the user asked for that.
 const copyAssistantText = async (text: string) => {
-    const { renderMarkdownSync } = await import('./markdown/markdownCore');
-    const html = renderMarkdownSync(text);
+    const { renderMarkdownForExport } = await import('./markdown/renderMarkdownForExport');
+    const root = await renderMarkdownForExport(text, { purpose: 'copy' });
     const plainText = useUIStore.getState().copyMessagesAsPlainText
-        ? (await import('./markdown/selectionMarkdown')).renderedMarkdownHtmlToPlainText(html, document)
+        ? (await import('./markdown/selectionMarkdown')).serializeRenderedMarkdown(root, 'plain')
         : undefined;
-    return copyMarkdownToClipboard(text, html, { plainText });
+    return copyMarkdownToClipboard(text, root.innerHTML, { plainText });
 };
 
 const getMessageInfoProp = (info: unknown, key: string): unknown => {
@@ -172,14 +175,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         }))
     );
 
+    // Change-request chips are labelled by their provider; the lookup changes when the list lands.
+    const descriptorOf = useSourceControlDescriptorOf();
     const normalizedParts = React.useMemo(() => {
         const safeParts = normalizeParts(message.parts);
         if (!isUser) {
             return safeParts;
         }
 
-        return normalizeUserDisplayParts(safeParts);
-    }, [isUser, message.parts]);
+        return normalizeUserDisplayParts(safeParts, descriptorOf);
+    }, [descriptorOf, isUser, message.parts]);
 
     const agentName = React.useMemo(() => {
         if (isUser) return undefined;
@@ -313,6 +318,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             }),
         [normalizedParts, showReasoningTraces]
     );
+
+    const promptOrigin = React.useMemo(() => readPromptOrigin(message.info), [message.info]);
 
     const agentMention = React.useMemo(() => {
         if (!isUser) {
@@ -512,6 +519,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         return true;
     }, [isUser, messageTextContent]);
 
+    const handleSaveAsSnippet = React.useCallback(() => {
+        useSnippetsStore.getState().openQuickCreate({ content: messageTextContent });
+    }, [messageTextContent]);
+
     const handleCopyTurn = React.useCallback(async () => {
         const turnText = [...(earlierAssistantText ?? []), messageTextContent].filter((text) => text.length > 0).join('\n\n');
         const result = await copyAssistantText(turnText);
@@ -657,6 +668,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 onCopyMessage={handleCopyMessage}
                                                 onCopyLink={handleCopyLink}
                                                 copiedMessage={copiedMessage}
+                                                onSaveAsSnippet={handleSaveAsSnippet}
                                                 showReasoningTraces={showReasoningTraces}
                                                 agentMention={agentMention}
                                                 onRevert={handleRevert}
@@ -667,6 +679,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 errorMessage={assistantErrorText}
                                                 errorResponseBody={assistantErrorResponseBody}
                                                 extraActions={guestMessageActions}
+                                                promptOrigin={promptOrigin}
                                             />
                                         </div>
                                     </div>
@@ -692,6 +705,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                         onCopyMessage={handleCopyMessage}
                                         onCopyLink={handleCopyLink}
                                         copiedMessage={copiedMessage}
+                                        onSaveAsSnippet={handleSaveAsSnippet}
                                         showReasoningTraces={showReasoningTraces}
                                         agentMention={agentMention}
                                         onRevert={handleRevert}

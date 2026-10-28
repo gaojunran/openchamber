@@ -92,6 +92,8 @@ Additional windows keep their own per-window runtime bootstrap instead of being 
 
 The packaged UI protocol rejects relative `/api`, `/auth`, and `/health` requests with JSON `503`; runtime calls must use the per-window HTTP base and never fall back to the app shell.
 
+Extension frames load from `/api/guest-files/<grant>/…`, or `/api/guests/<id>/…` on a server without grants; the desktop navigation guard treats both prefixes as the extension's own pages.
+
 The HTML file preview runs in a sandboxed iframe without `allow-same-origin`, so it has an opaque origin like an extension frame. The desktop navigation guard lets the main app frame load `/api/fs/preview/<grant>/…` into an empty direct child, or reload a preview child with a new grant after the file is saved, and lets the preview follow its own links between pages of the same grant. A preview cannot reach another grant or any other route, and loaded extension frames and their children cannot navigate to a preview.
 
 For a saved host, the guard treats both its `url` and its `apiUrl` as the app's own origin. When a relay host's LAN address changes, the candidate refresh in `packages/ui/src/lib/desktopRelayRestore.ts` rewrites only `apiUrl`, and the window then loads extension pages from that address.
@@ -106,6 +108,26 @@ again in main, with the same exclusions as the shared UI classifier. Native
 opening failures do not fall back to a browser window for application links.
 
 Native menu actions reach the renderer as one DOM event per click. Main must not also send them over IPC: preload turns every IPC emit into a call to its bridge listeners and a DOM event, so the action would run again. Update-check notifications go over IPC only, for the same reason.
+
+Native Copy link uses `context-menu-clipboard.mjs` to write URL text and bookmark
+metadata together through Electron's `ClipboardItem` API. `electron-context-menu`
+4.1.2 still uses the old object-shaped clipboard write. Inside its `prepend` hook,
+`defaultActions.copyLink()` returns the existing item, so replacing that item's
+handler preserves menu order, visibility and live translations. Copy failures are
+logged without clipboard data.
+
+`scripts/smoke-context-menu.mjs`, run with Electron on an isolated display and
+clipboard, checks the real dependency's menu identity, translations and native
+clipboard writes. On Linux, run it inside a disposable container with its own Xvfb
+display; it writes synthetic data to that display's clipboard and selection.
+The fixture clicks the built menu item programmatically. A live right-click,
+menu selection and paste in the app still need a separate interaction check.
+
+From the repository root inside that disposable container:
+
+```bash
+xvfb-run -a packages/electron/node_modules/.bin/electron --no-sandbox packages/electron/scripts/smoke-context-menu.mjs
+```
 
 The local diagnostics IPC combines the desktop log with the SSH manager's in-memory history. `main.mjs` classifies SSH messages in the native process before returning them; host names, stderr and other raw SSH output never cross to the renderer. Remote SSH files are not read.
 
@@ -167,7 +189,7 @@ IPC results if its endpoint changes while the read is pending.
 | `scripts/bundle-main.mjs` | Bundles Electron main code into `dist-bundle/{entry,main,early-startup}.mjs` for packaging |
 | `scripts/rebuild-native.mjs` | Rebuilds native modules against the Electron runtime |
 | `scripts/package.mjs` | Runs `electron-builder`, with unsigned Windows builds when signing env is missing |
-| `resources/` | Packaged web assets, icons, macOS entitlements, and the NSIS include for the Windows installer |
+| `resources/` | Packaged web assets, icons, macOS entitlements, and the NSIS include for the Windows installer. Every file in `resources/icons` is written by `bun run brand:generate` (`scripts/brand`); do not edit them by hand |
 
 ## Development
 
@@ -216,7 +238,7 @@ bun install
 bun run electron:dev
 ```
 
-`bun run electron:dev` starts the web dev server with HMR, then launches Electron against `packages/electron/entry.mjs`. On Windows, the HMR launcher resolves npm's `bun.cmd` shim to the underlying `bun.exe` before spawning Bun child processes.
+`bun run electron:dev` starts the web dev server with HMR, then launches Electron against `packages/electron/entry.mjs`. An in-app restart under this script skips `app.relaunch()`: Electron exits with the code the script passes in `OPENCHAMBER_ELECTRON_DEV_RELAUNCH_EXIT_CODE`, and the script starts Electron again while the HMR server keeps running. On Windows, the HMR launcher resolves npm's `bun.cmd` shim to the underlying `bun.exe` before spawning Bun child processes.
 
 The Electron workspace package trusts Electron's install script so `bun install` downloads the platform runtime in fresh checkouts and worktrees.
 
@@ -374,7 +396,10 @@ The server (`packages/web/server/lib/fs/ripgrep.js`) looks for ripgrep in this o
   `markSessionViewed`: opening it, or returning to the window while it is
   open) removes that session's delivered notifications from Notification
   Center through `desktop_clear_session_notifications`. Main removes only
-  notifications it delivered in the current run.
+  notifications it delivered in the current run. A click opens the session
+  in the window that shows its instance and raises that window; the
+  receiving window is brought forward first only when it already shows the
+  same instance, so the local window does not jump in front of a remote one.
 - User-confirmed local folder selection. The shared UI supplies the requested directory as the picker `defaultPath`; confirmation is required before filesystem access is retried.
 - Theme-file selection uses the local `~/.vscode/extensions` directory when present.
   The local-page-gated `desktop_pick_theme_file` command returns only the selected
@@ -383,7 +408,7 @@ The server (`packages/web/server/lib/fs/ripgrep.js`) looks for ripgrep in this o
 - One-click open/reveal/open-in-app actions.
 - Desktop host switcher and deep-link imports.
 - Local and remote instance handling. The switcher lists Local only with the origin main reports for the local server, never with the page's own origin. A window can show another instance's own page, for example after a connect link redirects to that server. Such a page cannot switch to Local in place, because the local server answers only the app's own origins and the local token stays with local pages. The switcher asks main through the remote-safe `desktop_switch_to_local`, and main loads the Local UI into the main window the way `openchamber://host/local` does. The command acts only for the main window, because other windows keep the runtime they were opened with. Everywhere else it returns false and the switcher switches in place.
-- Which instance a new window opens on. The main window and the menu New Window open the default instance: on launch the renderer reconnects a relay-capable default host (`restoreDesktopRelayRuntime` with no target). A window opened for a specific instance (the switcher's "Open in new window", a host deep link, Mini Chat) is marked with `--openchamber-explicit-runtime` and keeps that instance. A direct instance arrives as an injected endpoint and skips the restore; a relay-capable one arrives as `--openchamber-relay-host-id`, and the renderer connects it with `reconnectActive`, because boot already set that host's runtime key and a plain restore would treat the window as connected. Mini Chat passes the parent's runtime key, so main resolves a relay-capable parent to its host id.
+- Which instance a new window opens on. The main window and the menu New Window open the default instance: on launch the renderer reconnects a relay-capable default host (`restoreDesktopRelayRuntime` with no target). A window opened for a specific instance (the switcher's "Open in new window", a host deep link, Mini Chat) is marked with `--openchamber-explicit-runtime` and keeps that instance. A direct instance arrives as an injected endpoint and skips the restore; a relay-capable one arrives as `--openchamber-relay-host-id`, and the renderer connects it with `reconnectActive`, because boot already set that host's runtime key and a plain restore would treat the window as connected. Mini Chat passes the parent's runtime key, so main resolves a relay-capable parent to its host id. Windows opened for a configured host carry the host's id as a tag (`__ocHostWindowId`), and the renderer reports its live runtime key to main at boot and on every switch (`desktop_set_window_runtime_key`), so `openHostWindow` finds the window to reuse by the live key first and the tag second: a link or notification click for a host that is already open lands in that window instead of opening another.
 - SSH host import, connections, logs, and port forwarding.
 - SSH uses OpenSSH ControlMaster on macOS/Linux. Windows uses independent hidden OpenSSH processes for setup commands and each long-lived forward because Win32 OpenSSH does not support ControlMaster reliably.
 - With ControlMaster, every forward, the main one included, is added with `ssh -O forward`: the master holds the listener, and that command's exit status is the answer. A `-N -L` client through the master would open a remote login shell and exit with that shell's status, which says nothing about the forward. The connection monitor then watches the local port and the master.

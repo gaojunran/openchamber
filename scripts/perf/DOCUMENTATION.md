@@ -250,6 +250,11 @@ One run is never a result: repeat a scenario and aggregate with
 `node scripts/perf/aggregate-runs.mjs <run directories…>`.
 `perf/code-300cps` and `perf/code-1200cps` stream one 240-line code block,
 because what a growing fence costs does not show in fences of five lines.
+`perf/showcase-20000cps` answers with one of every Markdown construct the chat
+renders (headings, lists, tasks, quotes, a table, inline and display math,
+a disclosure, a Mermaid diagram, fenced code with and without a language,
+raw HTML that must stay text). It is not a timing stimulus: open its session
+on two builds and compare screenshots when a change touches the renderer.
 `perf/think-30s` stays silent for thirty seconds and then answers in one word:
 it holds the app in its working state with nothing streaming, which is what an
 agent thinking or running a tool looks like to the UI.
@@ -451,7 +456,8 @@ that is not listed.
 Clicks sidebar session rows with real mouse input and measures, per click:
 
 - `ack`: the clicked row is highlighted as active (the first visible reaction);
-- `content`: messages that were not in the DOM before are in it. They may still
+- `content`: messages that were not rendered before are rendered (a timeline kept
+  in the DOM under `display: none` counts as not rendered). They may still
   be invisible: a freshly opened timeline stays at opacity 0 while renderers
   hold their provisional first paint (`data-timeline-reveal="pending"`), then
   fades in;
@@ -616,6 +622,17 @@ OPENCHAMBER_TEST_CHROME=/path/to/chrome node --test scripts/perf/json-tree-view.
 ```
 
 The test reports a skip if Chrome is unavailable. An explicit invalid Chrome path fails. This is layout correctness coverage; measure Files performance in the built app.
+
+## Quote comment popover regression
+
+`chat-quote-popover.browser.test.mjs` renders the real `ChatQuoteMarkPopover` with the UI stylesheet in an isolated Vite fixture that has its own optimizer cache, so it can run next to the JSON tree test. A short saved comment sits on a quote at the left and right edges, at 320, 390 and 1024 px, in both text directions. The test opens the editor and saves twice, and after every step it checks that the popover and its controls stay 12 px inside the viewport. Like the JSON tree test, it stays on loopback and stops what it started.
+
+```bash
+node --test scripts/perf/chat-quote-popover.browser.test.mjs
+OPENCHAMBER_TEST_CHROME=/path/to/chrome node --test scripts/perf/chat-quote-popover.browser.test.mjs
+```
+
+It skips without Chrome and fails on an explicit invalid Chrome path, the same as the JSON tree test.
 
 ## profile:heap
 
@@ -1025,20 +1042,7 @@ be a measurement, never a disabled instrument.
 
 ## Methodology Rules
 
-- **Never report an "after" without a "before" on the identical scenario and
-  build.** Rebuild the unchanged version and re-run it, however inconvenient:
-  `profile:compare` does exactly that. Expect plausible fixes to change nothing.
-- **A sampling profiler cannot explain native work.** Self time in `(program)`
-  only means the time was not in interpreted JavaScript. Use the trace
-  breakdown, which names parsing, style, layout, layerization, paint and raster.
-- **Normalise when the workload varies.** Assistant responses differ in length
-  between runs, so per-second totals are not comparable; `profile:session`
-  reports output-normalised metrics for this reason.
-- **Revert what you cannot measure.** A change that does not move its target
-  metric is unvalidated complexity, not a small win.
-- **Reproduction may need production scale you do not have.** A threshold effect
-  is invisible below its threshold. Compare the reporter's scale against yours
-  on the dimension the code keys on before concluding a bug is absent.
+The measurement rules are in `.agents/skills/performance-engineering/SKILL.md`, *Workflow* steps 0 and 1. This tooling encodes two of them: `profile:compare` reruns the unchanged build for every before/after, and `profile:session` reports output-normalised metrics because response lengths vary between runs.
 
 ## Module Layout
 

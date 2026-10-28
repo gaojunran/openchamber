@@ -18,8 +18,7 @@ import {
   subagentSessionId,
   toolDescription,
   toolFileDiffs,
-  toolInputPath,
-} from "./tools"
+  toolInputPath, isShownInPlace, proposedWorkflowRunId, generatedImagePaths } from "./tools"
 import type { Metadata, ToolInput, ToolState } from "./model"
 
 describe("tool identity", () => {
@@ -295,5 +294,42 @@ describe("renderedPage", () => {
     expect(titled(`<h1>${"x".repeat(200)}</h1>`)).toBe("x".repeat(120))
     // Nothing names it: the chat shows its own word.
     expect(titled("<p>a</p>")).toBe("")
+  })
+})
+
+describe("proposedWorkflowRunId", () => {
+  const completed = (output: string, tool = "openchamber_workflow"): [string, ToolState] => [tool, { status: "completed", input: { action: "workflow.run" }, output, time: { start: 1, end: 2 } }]
+  type Envelope = { ok: boolean; action: string; data?: { runId: string; state?: string }; error?: { message: string } }
+  const envelope = (body: Envelope) => JSON.stringify({ schemaVersion: 1, ...body })
+
+  test("reads the run a workflow.run call proposed, which the chat draws in place of the row", () => {
+    const call = completed(envelope({ ok: true, action: "workflow.run", data: { runId: "wf_one", state: "awaiting-approval" } }))
+    expect(proposedWorkflowRunId(...call)).toBe("wf_one")
+    expect(isShownInPlace(...call)).toBe(true)
+  })
+
+  test("leaves other actions, refusals and other tools to their rows", () => {
+    expect(proposedWorkflowRunId(...completed(envelope({ ok: true, action: "workflow.status", data: { runId: "wf_one" } })))).toBeNull()
+    expect(proposedWorkflowRunId(...completed(envelope({ ok: false, action: "workflow.run", error: { message: "bad script" } })))).toBeNull()
+    expect(proposedWorkflowRunId(...completed("not json"))).toBeNull()
+    expect(proposedWorkflowRunId(...completed(envelope({ ok: true, action: "workflow.run", data: { runId: "wf_one" } }), "openchamber"))).toBeNull()
+  })
+})
+
+describe("generatedImagePaths", () => {
+  const completed = (output: string, tool = "openchamber_image"): [string, ToolState] => [tool, { status: "completed", input: { prompt: "a cat" }, output, time: { start: 1, end: 2 } }]
+  const envelope = (ok: boolean, paths: string[]) => JSON.stringify({ schemaVersion: 1, ok, action: "image.generate", data: { images: paths.map((path) => ({ path, mime: "image/png" })) } })
+
+  test("reads the files an image.generate call saved, which the chat draws in place of the row", () => {
+    const call = completed(envelope(true, ["/tmp/opencode/generated-images/a.png", "/repo/b.png"]))
+    expect(generatedImagePaths(...call)).toEqual(["/tmp/opencode/generated-images/a.png", "/repo/b.png"])
+    expect(isShownInPlace(...call)).toBe(true)
+  })
+
+  test("leaves refusals, running calls and other tools to their rows", () => {
+    expect(generatedImagePaths(...completed(envelope(false, ["/tmp/a.png"])))).toEqual([])
+    expect(generatedImagePaths(...completed(envelope(true, [])))).toEqual([])
+    expect(generatedImagePaths(...completed(envelope(true, ["/tmp/a.png"]), "openchamber_render"))).toEqual([])
+    expect(generatedImagePaths("openchamber_image", { status: "running", input: {}, time: { start: 1 } })).toEqual([])
   })
 })

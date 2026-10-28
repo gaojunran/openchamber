@@ -2,8 +2,9 @@
 //
 // The server cannot reach `packages/ui`, so the defaults the settings page
 // shows as placeholders (`settings.notifications.page.template.defaults.*`)
-// are mirrored here. A missing or unknown tag falls back to English, which is
-// what every build did before this list existed.
+// are mirrored here. The `review*` texts have no template: only the server
+// writes them, when an auto-review ends. A missing or unknown tag falls back
+// to English, which is what every build did before this list existed.
 
 const en = {
   readyTitle: '{agent_name} is ready',
@@ -19,6 +20,13 @@ const en = {
   workDoneTitle: 'Work looks done',
   reviewReadyTitle: 'Changes ready for review',
   waitingOnYouTitle: 'Waiting on you',
+  reviewCleanTitle: 'Review finished',
+  reviewCleanBody: 'No findings left',
+  reviewDisputedTitle: 'Review needs your decision',
+  reviewDisputedBody: 'Some findings are still disputed',
+  reviewLimitTitle: 'Review stopped after five rounds',
+  reviewLimitBody: 'Findings are still open',
+  reviewFailedTitle: 'Review failed',
 };
 
 const de = {
@@ -35,6 +43,13 @@ const de = {
   workDoneTitle: 'Arbeit scheint abgeschlossen',
   reviewReadyTitle: 'Änderungen bereit zur Durchsicht',
   waitingOnYouTitle: 'Wartet auf dich',
+  reviewCleanTitle: 'Review abgeschlossen',
+  reviewCleanBody: 'Keine offenen Befunde',
+  reviewDisputedTitle: 'Review braucht deine Entscheidung',
+  reviewDisputedBody: 'Einige Befunde sind noch strittig',
+  reviewLimitTitle: 'Review nach fünf Runden beendet',
+  reviewLimitBody: 'Es sind noch Befunde offen',
+  reviewFailedTitle: 'Review fehlgeschlagen',
 };
 
 const fr = {
@@ -51,6 +66,13 @@ const fr = {
   workDoneTitle: 'Le travail semble terminé',
   reviewReadyTitle: 'Modifications prêtes pour relecture',
   waitingOnYouTitle: 'À vous de jouer',
+  reviewCleanTitle: 'Revue terminée',
+  reviewCleanBody: 'Plus aucun point en suspens',
+  reviewDisputedTitle: 'La revue attend ta décision',
+  reviewDisputedBody: 'Certains points restent contestés',
+  reviewLimitTitle: 'Revue arrêtée après cinq tours',
+  reviewLimitBody: 'Des points restent ouverts',
+  reviewFailedTitle: 'La revue a échoué',
 };
 
 const nl = {
@@ -67,6 +89,13 @@ const nl = {
   workDoneTitle: 'Werk lijkt afgerond',
   reviewReadyTitle: 'Wijzigingen klaar voor review',
   waitingOnYouTitle: 'Wacht op jou',
+  reviewCleanTitle: 'Review klaar',
+  reviewCleanBody: 'Geen bevindingen meer',
+  reviewDisputedTitle: 'Review wacht op je beslissing',
+  reviewDisputedBody: 'Over sommige bevindingen is nog onenigheid',
+  reviewLimitTitle: 'Review gestopt na vijf rondes',
+  reviewLimitBody: 'Er staan nog bevindingen open',
+  reviewFailedTitle: 'Review mislukt',
 };
 
 const zhCN = {
@@ -83,6 +112,13 @@ const zhCN = {
   workDoneTitle: '工作看起来已完成',
   reviewReadyTitle: '有改动可查看',
   waitingOnYouTitle: '等你处理',
+  reviewCleanTitle: '审查完成',
+  reviewCleanBody: '没有剩余问题',
+  reviewDisputedTitle: '审查需要你来决定',
+  reviewDisputedBody: '部分问题仍有争议',
+  reviewLimitTitle: '审查在五轮后停止',
+  reviewLimitBody: '仍有未解决的问题',
+  reviewFailedTitle: '审查失败',
 };
 
 const zhTW = {
@@ -99,6 +135,13 @@ const zhTW = {
   workDoneTitle: '工作看起來已完成',
   reviewReadyTitle: '有變更可檢視',
   waitingOnYouTitle: '等你處理',
+  reviewCleanTitle: '審查完成',
+  reviewCleanBody: '沒有剩餘問題',
+  reviewDisputedTitle: '審查需要你來決定',
+  reviewDisputedBody: '部分問題仍有爭議',
+  reviewLimitTitle: '審查在五輪後停止',
+  reviewLimitBody: '仍有未解決的問題',
+  reviewFailedTitle: '審查失敗',
 };
 
 const uk = {
@@ -115,6 +158,13 @@ const uk = {
   workDoneTitle: 'Роботу виглядає завершеною',
   reviewReadyTitle: 'Зміни готові до перегляду',
   waitingOnYouTitle: 'Чекаємо на вас',
+  reviewCleanTitle: 'Ревʼю завершено',
+  reviewCleanBody: 'Зауважень не лишилось',
+  reviewDisputedTitle: 'Ревʼю чекає твого рішення',
+  reviewDisputedBody: 'Щодо деяких зауважень досі суперечка',
+  reviewLimitTitle: 'Ревʼю зупинено після пʼяти кіл',
+  reviewLimitBody: 'Зауваження ще відкриті',
+  reviewFailedTitle: 'Ревʼю не вдалося',
 };
 
 const es = {
@@ -131,6 +181,13 @@ const es = {
   workDoneTitle: 'El trabajo parece terminado',
   reviewReadyTitle: 'Cambios listos para revisar',
   waitingOnYouTitle: 'Te toca a ti',
+  reviewCleanTitle: 'Revisión terminada',
+  reviewCleanBody: 'No quedan hallazgos',
+  reviewDisputedTitle: 'La revisión necesita tu decisión',
+  reviewDisputedBody: 'Algunos hallazgos siguen en disputa',
+  reviewLimitTitle: 'Revisión detenida tras cinco rondas',
+  reviewLimitBody: 'Todavía hay hallazgos abiertos',
+  reviewFailedTitle: 'La revisión falló',
 };
 
 const ptBR = {
@@ -147,6 +204,13 @@ const ptBR = {
   workDoneTitle: 'O trabalho parece concluído',
   reviewReadyTitle: 'Alterações prontas para revisão',
   waitingOnYouTitle: 'Esperando você',
+  reviewCleanTitle: 'Revisão concluída',
+  reviewCleanBody: 'Nenhum apontamento restante',
+  reviewDisputedTitle: 'A revisão precisa da sua decisão',
+  reviewDisputedBody: 'Alguns apontamentos ainda estão em disputa',
+  reviewLimitTitle: 'Revisão parada após cinco rodadas',
+  reviewLimitBody: 'Ainda há apontamentos em aberto',
+  reviewFailedTitle: 'A revisão falhou',
 };
 
 const ko = {
@@ -163,6 +227,13 @@ const ko = {
   workDoneTitle: '작업이 완료된 것 같습니다',
   reviewReadyTitle: '검토할 변경 사항이 있습니다',
   waitingOnYouTitle: '사용자의 확인이 필요합니다',
+  reviewCleanTitle: '리뷰 완료',
+  reviewCleanBody: '남은 지적 사항 없음',
+  reviewDisputedTitle: '리뷰에 결정이 필요합니다',
+  reviewDisputedBody: '일부 지적 사항에 아직 이견이 있습니다',
+  reviewLimitTitle: '5회 반복 후 리뷰 중단',
+  reviewLimitBody: '아직 열린 지적 사항이 있습니다',
+  reviewFailedTitle: '리뷰 실패',
 };
 
 const pl = {
@@ -179,6 +250,13 @@ const pl = {
   workDoneTitle: 'Praca wygląda na ukończoną',
   reviewReadyTitle: 'Zmiany gotowe do przeglądu',
   waitingOnYouTitle: 'Czekamy na ciebie',
+  reviewCleanTitle: 'Przegląd zakończony',
+  reviewCleanBody: 'Nie zostały żadne uwagi',
+  reviewDisputedTitle: 'Przegląd czeka na twoją decyzję',
+  reviewDisputedBody: 'Część uwag jest nadal sporna',
+  reviewLimitTitle: 'Przegląd zatrzymany po pięciu rundach',
+  reviewLimitBody: 'Nadal są otwarte uwagi',
+  reviewFailedTitle: 'Przegląd się nie powiódł',
 };
 
 const ja = {
@@ -195,6 +273,13 @@ const ja = {
   workDoneTitle: '作業は完了したようです',
   reviewReadyTitle: 'レビューできる変更があります',
   waitingOnYouTitle: 'あなたの確認待ちです',
+  reviewCleanTitle: 'レビュー完了',
+  reviewCleanBody: '残っている指摘はありません',
+  reviewDisputedTitle: 'レビューにあなたの判断が必要です',
+  reviewDisputedBody: '一部の指摘はまだ意見が分かれています',
+  reviewLimitTitle: '5 回でレビューを停止しました',
+  reviewLimitBody: '未解決の指摘があります',
+  reviewFailedTitle: 'レビューに失敗しました',
 };
 
 const tr = {
@@ -211,6 +296,13 @@ const tr = {
   workDoneTitle: 'İş bitti görünüyor',
   reviewReadyTitle: 'İncelemeye hazır değişiklikler',
   waitingOnYouTitle: 'Seni bekliyor',
+  reviewCleanTitle: 'İnceleme bitti',
+  reviewCleanBody: 'Açık bulgu kalmadı',
+  reviewDisputedTitle: 'İnceleme kararını bekliyor',
+  reviewDisputedBody: 'Bazı bulgular hâlâ tartışmalı',
+  reviewLimitTitle: 'İnceleme beş turdan sonra durdu',
+  reviewLimitBody: 'Hâlâ açık bulgular var',
+  reviewFailedTitle: 'İnceleme başarısız oldu',
 };
 
 const ar = {
@@ -227,6 +319,13 @@ const ar = {
   workDoneTitle: 'يبدو العمل منجزًا',
   reviewReadyTitle: 'تغييرات جاهزة للمراجعة',
   waitingOnYouTitle: 'بانتظارك',
+  reviewCleanTitle: 'اكتملت المراجعة',
+  reviewCleanBody: 'لم تتبقَّ ملاحظات',
+  reviewDisputedTitle: 'المراجعة تحتاج إلى قرارك',
+  reviewDisputedBody: 'بعض الملاحظات ما زالت موضع خلاف',
+  reviewLimitTitle: 'توقفت المراجعة بعد خمس جولات',
+  reviewLimitBody: 'ما زالت هناك ملاحظات مفتوحة',
+  reviewFailedTitle: 'فشلت المراجعة',
 };
 
 const he = {
@@ -243,6 +342,13 @@ const he = {
   workDoneTitle: 'העבודה נראית גמורה',
   reviewReadyTitle: 'שינויים מוכנים לבדיקה',
   waitingOnYouTitle: 'מחכים לך',
+  reviewCleanTitle: 'הסקירה הסתיימה',
+  reviewCleanBody: 'לא נותרו ממצאים',
+  reviewDisputedTitle: 'הסקירה מחכה להחלטה שלך',
+  reviewDisputedBody: 'על חלק מהממצאים עדיין יש מחלוקת',
+  reviewLimitTitle: 'הסקירה נעצרה אחרי חמישה סבבים',
+  reviewLimitBody: 'עדיין יש ממצאים פתוחים',
+  reviewFailedTitle: 'הסקירה נכשלה',
 };
 
 export const NOTIFICATION_TEXT_BY_LOCALE = {
