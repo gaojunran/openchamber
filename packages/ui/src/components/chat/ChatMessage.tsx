@@ -1,6 +1,7 @@
 import React from 'react';
 import { modelVariantNames } from '@/lib/modelVariants';
 import { findCatalogModel, type Message, type Part } from '@/lib/opencode/model';
+import { readPromptOrigin } from '@/lib/opencode/prompt-origin';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MessageFreshnessDetector } from '@/lib/messageFreshness';
@@ -39,6 +40,7 @@ import type { ReviewTransferDirection } from '@/lib/reviewFlow';
 import { toast } from 'sonner';
 import { useCopyMessageLink } from './message/useCopyMessageLink';
 import { useI18n } from '@/lib/i18n';
+import { useSnippetsStore } from '@/stores/useSnippetsStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { getContextObligatoryMessages } from '@/lib/contextObligatoryMessages';
 import { setContextObligatoryMessage } from '@/sync/session-actions';
@@ -317,6 +319,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         [normalizedParts, showReasoningTraces]
     );
 
+    const promptOrigin = React.useMemo(() => readPromptOrigin(message.info), [message.info]);
+
     const agentMention = React.useMemo(() => {
         if (!isUser) {
             return undefined;
@@ -515,6 +519,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         return true;
     }, [isUser, messageTextContent]);
 
+    const handleSaveAsSnippet = React.useCallback(() => {
+        useSnippetsStore.getState().openQuickCreate({ content: messageTextContent });
+    }, [messageTextContent]);
+
     const handleCopyTurn = React.useCallback(async () => {
         const turnText = [...(earlierAssistantText ?? []), messageTextContent].filter((text) => text.length > 0).join('\n\n');
         const result = await copyAssistantText(turnText);
@@ -660,6 +668,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 onCopyMessage={handleCopyMessage}
                                                 onCopyLink={handleCopyLink}
                                                 copiedMessage={copiedMessage}
+                                                onSaveAsSnippet={handleSaveAsSnippet}
                                                 showReasoningTraces={showReasoningTraces}
                                                 agentMention={agentMention}
                                                 onRevert={handleRevert}
@@ -670,6 +679,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 errorMessage={assistantErrorText}
                                                 errorResponseBody={assistantErrorResponseBody}
                                                 extraActions={guestMessageActions}
+                                                promptOrigin={promptOrigin}
                                             />
                                         </div>
                                     </div>
@@ -695,6 +705,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                         onCopyMessage={handleCopyMessage}
                                         onCopyLink={handleCopyLink}
                                         copiedMessage={copiedMessage}
+                                        onSaveAsSnippet={handleSaveAsSnippet}
                                         showReasoningTraces={showReasoningTraces}
                                         agentMention={agentMention}
                                         onRevert={handleRevert}

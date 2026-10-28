@@ -57,10 +57,7 @@ import {
 } from "./session-event-router"
 import { shouldConsumeBulkArchiveEcho } from "./bulk-archive-echo"
 import { applyForkedSession, noteForkedSessionPatched } from "./forked-session"
-import {
-  LOCATION_SCOPED_FORM_SESSION_ID,
-  routeUnlocatedLocationScopedForm,
-} from "./location-scoped-forms"
+import { LOCATION_SCOPED_FORM_SESSION_ID } from "./location-scoped-forms"
 import { useUIStore } from "@/stores/useUIStore"
 import { useBtwStore } from "@/stores/useBtwStore"
 import { selectNewChildSessions } from "./child-session-discovery"
@@ -74,11 +71,16 @@ import { usePermissionStore } from "@/stores/permissionStore"
 import { policySnapshotFromWire } from "@/stores/utils/permissionAutoAccept"
 import { selectSafetyNetAvailable, useRoutingStore } from "@/stores/useRoutingStore"
 import { useMessageQueueStore } from "@/stores/messageQueueStore"
+import { isAutoReviewAvailable, useAutoReviewStore } from "@/stores/useAutoReviewStore"
 import { subscribeMessageQueueSync } from "./message-queue-sync"
+import { subscribeAutoReviewSync } from "./auto-review-sync"
+import { subscribePrWatchSync } from "./pr-watch-sync"
 import { subscribeSessionWarmingSync } from "./session-warming-sync"
 import { subscribeSessionFoldersSync } from "./session-folders-sync"
+import { subscribeSessionDraftsSync } from "./session-drafts-sync"
 import { subscribePermissionPolicySync, subscribeSpacePermissionModes } from "./permission-mode-sync"
 import { spaceFoldersOfProject, subscribeSpaceCatalogs } from "./space-catalog-sync"
+import { subscribeSpaceSessionProject } from "./space-session-project"
 import {
   processVSCodePermissionAutoAccept,
   processVSCodeReconciledPermissionAutoAccept,
@@ -116,6 +118,8 @@ import {
   type LocationRelease,
 } from "./location-release"
 import { applySessionAssistEvent, subscribeSessionAssistSettled } from "./pending-session-assists"
+import { useWorkflowRunsStore } from "@/lib/workflows/store"
+import { setWorkflowRunningSessions } from "./workflow-activity"
 import { isChatDirectoryPath } from "@/lib/chatDirectories"
 import type { State } from "./types"
 import {
@@ -135,7 +139,8 @@ import { isFilesystemError } from "@/lib/api/files-errors"
 import { formatMessage, useI18nStore } from "@/lib/i18n"
 import { sessionEvents } from "@/lib/sessionEvents"
 import { fileTreeChanges } from "@/lib/fileTreeChanges"
-import { listGlobalSessionPages, splitGlobalSessionsByArchived, type SessionPageLister } from "@/stores/globalSessions"
+import { notifyWatchedFileChanged, renewWatchedFiles } from "@/lib/watchedFiles"
+import { listGlobalSessionPages, splitGlobalSessionsByArchived, type GlobalSessionRecord, type SessionPageLister } from "@/stores/globalSessions"
 import { areRequestArraysReferentiallyEqual, collectScopedBlockingRequests } from "./scoped-blocking-requests"
 import { EMPTY_USER_MESSAGE_HISTORY_SNAPSHOT, buildUserMessageHistorySnapshot, type TranscriptPrompt, type UserMessageHistorySnapshot } from "./user-message-history"
 import {
@@ -147,6 +152,14 @@ import {
 } from "./session-message-loader"
 import { openCodeStartupSignal } from "./opencode-startup-gate"
 import { claimFirstServerConnect, notifyFirstServerConnect } from "./first-server-connect"
+
+// Session rows read which sessions run a workflow from a small store of their
+// own (`workflow-activity.ts`), kept here from the runs the server reports.
+useWorkflowRunsStore.subscribe((state) => {
+  setWorkflowRunningSessions(Object.entries(state.bySession).flatMap(([sessionId, entry]) => (
+    entry.runs.some((run) => run.state === "running") ? [sessionId] : []
+  )))
+})
 
 // ---------------------------------------------------------------------------
 // Context
@@ -493,6 +506,13 @@ function enqueueSessionMaterialization(
       return
     }
     try {
+      // The gap the event saw went with the transcript the move carried:
+      // recover it where the session lives now.
+      const movedTo = directorySessionMovedTo(store.getState(), directory, sessionID)
+      if (movedTo) {
+        if (childStores.getChild(movedTo)) enqueueSessionMaterialization(movedTo, sessionID, childStores, request)
+        return
+      }
       if (!isSessionMaterializationStillNeeded(store.getState(), sessionID, request)) {
         countSyncPerformance("materializationPreflightSkips")
         return
@@ -1238,6 +1258,28 @@ const resolveCachedSessionDirectory = (sessionID: string): string | null => {
   return session ? resolveGlobalSessionDirectory(session) : null
 }
 
+const isBlockingRequestEvent = (payload: SyncEvent): boolean => (
+  payload.type === "permission.asked"
+  || payload.type === "permission.replied"
+  || payload.type === "form.created"
+  || payload.type === "form.settled"
+)
+
+/**
+ * Where the session went when it left this directory: the store removed it and
+ * no longer lists it, and the global list names another directory. Null while
+ * it still belongs here. Events about the move itself still name the directory
+ * it left, and reading the session back there leaves a copy that later
+ * location-less events are routed to.
+ */
+const directorySessionMovedTo = (state: State, directory: string, sessionID: string): string | null => {
+  if (state.sessionDeletedRevision?.[sessionID] === undefined) return null
+  if (state.session.some((session) => session.id === sessionID)) return null
+  const ownDirectory = resolveCachedSessionDirectory(sessionID)
+  if (ownDirectory === null) return null
+  return normalizeEventDirectory(ownDirectory) === normalizeEventDirectory(directory) ? null : ownDirectory
+}
+
 const resolveDirectoryFromRoutingIndex = (
   routingIndex: EventRoutingIndex,
   rawDirectory: string,
@@ -1256,6 +1298,19 @@ const resolveDirectoryFromRoutingIndex = (
     if (normalizedDirectory && normalizedDirectory !== "global" && childStoreHasSessionState(childStores, normalizedDirectory, sessionID, batch)) {
       setIndexedSessionDirectory(routingIndex, sessionID, normalizedDirectory)
       return normalizedDirectory
+    }
+
+    // The chat reads a session's permissions and forms from the store of the
+    // directory it lives in. OpenCode can send `permission.asked` without a
+    // location, and holding the session proves little: a store the session
+    // moved out of gets a copy back when that directory is read again later
+    // (a stream reconnect, opening it), and that read points the index at it.
+    if (isBlockingRequestEvent(payload) && (!normalizedDirectory || normalizedDirectory === "global")) {
+      const ownDirectory = resolveCachedSessionDirectory(sessionID)
+      if (ownDirectory && childStores.getChild(ownDirectory)) {
+        setIndexedSessionDirectory(routingIndex, sessionID, ownDirectory)
+        return ownDirectory
+      }
     }
 
     const indexedDirectory = routingIndex.sessionDirectoryById.get(sessionID)
@@ -2012,23 +2067,31 @@ export function handleEvent(
     return
   }
 
+  // A watched file changed: the views showing it re-read it (`lib/watchedFiles`).
+  if (payload.type === "filesystem.changed") {
+    if (expectedRuntimeKey !== getRuntimeKey()) return
+    notifyWatchedFileChanged(payload.properties.file)
+    return
+  }
+
+  // Workflow runs live in their own store, keyed by the session that proposed them.
+  if (payload.type === "openchamber.workflow-run") {
+    if (expectedRuntimeKey !== getRuntimeKey()) return
+    useWorkflowRunsStore.getState().apply(payload.properties.run)
+    return
+  }
+  if (payload.type === "openchamber.workflow-run-removed") {
+    if (expectedRuntimeKey !== getRuntimeKey()) return
+    useWorkflowRunsStore.getState().remove(payload.properties.parentSessionId, payload.properties.runId)
+    return
+  }
+
   if (payload.type === "openchamber.permission-auto-accept") {
     usePermissionStore.getState().applySnapshot(policySnapshotFromWire(payload.properties), expectedRuntimeKey, payload.properties.spaceId ?? "")
     return
   }
 
   if (shouldConsumeBulkArchiveEcho(payload, expectedRuntimeKey)) return
-
-  const routedAsUnlocatedForm = routeUnlocatedLocationScopedForm(normalizeEventDirectory(rawDirectory), payload, {
-    stores: Array.from(childStores.children, ([dir, store]) => [dir, getDirectoryEventState(store, batch)] as const),
-    activeDirectory: opencodeClient.getDirectory(),
-    redirect: (dir) => handleEvent(dir, payload, childStores, routingIndex, expectedRuntimeKey, false, streamingDirectory, batch),
-    resync: (dir) => {
-      const store = childStores.getChild(dir)
-      if (store) void resyncBlockingRequestsForDirectory(dir, store, [LOCATION_SCOPED_FORM_SESSION_ID], { includePermissions: false })
-    },
-  })
-  if (routedAsUnlocatedForm) return
 
   const directory = resolveDirectoryFromRoutingIndex(routingIndex, rawDirectory, payload, childStores, batch)
 
@@ -2899,6 +2962,7 @@ export function SyncProvider(props: {
   useEffect(() => {
     void usePermissionStore.getState().hydrate().catch(() => undefined)
     void useMessageQueueStore.getState().hydrate().catch(() => undefined)
+    if (isAutoReviewAvailable()) void useAutoReviewStore.getState().hydrate().catch(() => undefined)
   }, [props.sdk])
 
   useEffect(() => {
@@ -3128,14 +3192,18 @@ export function SyncProvider(props: {
   // Abort controller owned by the pipeline closure. Cleanup aborts + flushes.
   useEffect(() => {
     const unsubscribeQueueEvents = subscribeMessageQueueSync(runtimeKey)
+    const unsubscribeAutoReviewEvents = subscribeAutoReviewSync(runtimeKey)
+    const unsubscribePrWatchEvents = subscribePrWatchSync(runtimeKey)
     const unsubscribeSessionWarming = subscribeSessionWarmingSync(runtimeKey)
     const unsubscribeFolderEvents = subscribeSessionFoldersSync(runtimeKey)
+    const unsubscribeDraftEvents = subscribeSessionDraftsSync(runtimeKey)
     const unsubscribeSpaceModes = subscribeSpacePermissionModes(runtimeKey)
     const unsubscribePermissionPolicy = subscribePermissionPolicySync(
       runtimeKey,
       (event) => handleEvent("global", event, childStores, routingIndex, runtimeKey),
     )
     const unsubscribeSpaceCatalogs = subscribeSpaceCatalogs(runtimeKey)
+    const unsubscribeSpaceSessionProject = subscribeSpaceSessionProject(runtimeKey)
     const resyncAfterStreamGap = (reason: SessionMaterializationReason) => {
       // Cached transcripts may have missed events too; each revalidates its
       // tail the next time it is opened. Mark first so the active sessions'
@@ -3225,6 +3293,10 @@ export function SyncProvider(props: {
         }
         // Queue recovery is independent of the directory-bootstrap debounce.
         void useMessageQueueStore.getState().resync().catch(() => undefined)
+        // Workflow run changes during a gap are not replayed: read the shown sessions' runs again.
+        useWorkflowRunsStore.getState().reloadLoaded()
+        // OpenCode keeps file watches in memory; a restart behind the gap dropped them.
+        renewWatchedFiles()
         useConfigStore.setState({
           isConnected: true,
           hasEverConnected: true,
@@ -3270,11 +3342,15 @@ export function SyncProvider(props: {
       }
       pipeline.cleanup()
       unsubscribeQueueEvents()
+      unsubscribeAutoReviewEvents()
+      unsubscribePrWatchEvents()
       unsubscribeSessionWarming()
       unsubscribeFolderEvents()
+      unsubscribeDraftEvents()
       unsubscribeSpaceModes()
       unsubscribePermissionPolicy()
       unsubscribeSpaceCatalogs()
+      unsubscribeSpaceSessionProject()
     }
   }, [props.sdk, childStores, messageLoader, routingIndex, messageStreamTransport, runtimeKey, triggerDirectoryResync])
 
@@ -3295,13 +3371,15 @@ export function SyncProvider(props: {
       if (childDiscoveryDirectories.has(directory)) return
       childDiscoveryDirectories.add(directory)
       try {
-        // Paginated so directories with > pageSize sessions are fully
-        // discovered; a single 200-record page silently truncated the list and
-        // left subagent children beyond it undiscovered.
-        const { active: allSessions } = splitGlobalSessionsByArchived(
-          await listGlobalSessionPages(listSessionPage, { directory, pageSize: 200 }),
-        )
-        if (stopped || childStores.getChild(directory) !== store) return
+        // Each live parent's children only, every page of them. Listing the
+        // whole directory every 15 s moved megabytes per read in a directory
+        // with a thousand sessions, for as long as any of them was working.
+        const listed: GlobalSessionRecord[] = []
+        for (const parentID of parentSessionIds) {
+          listed.push(...await listGlobalSessionPages(listSessionPage, { directory, parentID, pageSize: 200 }))
+          if (stopped || childStores.getChild(directory) !== store) return
+        }
+        const { active: allSessions } = splitGlobalSessionsByArchived(listed)
         childDiscoveryBackoff.delete(directory)
         const state = store.getState()
         const globalEntities = useGlobalSessionsStore.getState().entityById

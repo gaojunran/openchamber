@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { useMobileAppActions } from '@/apps/mobileAppContext';
+import { useFireworksCelebration } from '@/contexts/FireworksContext';
 import { Icon } from '@/components/icon/Icon';
 import { DiffViewIcon } from '@/components/icons/DiffIcon';
 import { REFERENCE_META_TEXT, referenceNumberLabel } from '@/components/references/referencePickerItems';
@@ -16,11 +17,11 @@ import { readTrackerDescriptor } from '@/lib/trackers/registry';
 import { resolveComposerReferences } from '@/components/references/resolveComposerReferences';
 import { readMergeMethod, rememberMergeMethod, type RememberedMergeMethod } from '@/components/views/git/mergeMethodPreference';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
-import type { RepositoryChangeRequestReference, PullRequestStack, SourceControlReadContext } from '@/lib/api/types';
+import type { RepositoryChangeRequestReference, RepositoryDiscussionReference, PullRequestStack, SourceControlReadContext } from '@/lib/api/types';
 import type { PullRequestSource } from '@/lib/diff/pullRequestDiff';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, type I18nKey } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { ChangeRequestSubmitRequirement, SetStateInput, SourceControlCapabilities } from '@/lib/source-control/types';
+import type { ChangeRequestSubmitRequirement, DiscussionCloseReason, SetStateInput, SourceControlCapabilities } from '@/lib/source-control/types';
 import { useChangeRequestDiffServing, useSourceControlProvider } from '@/lib/source-control/providers/registry';
 import { formatChangeRequestReference } from '@/lib/source-control/providers/terminology';
 import { usePullRequestSelectionStore } from '@/stores/usePullRequestSelectionStore';
@@ -131,6 +132,7 @@ export const SourceBoardActions: React.FC<{
     const { t } = useI18n();
     const { sourceControl, trackers } = useRuntimeAPIs();
     const confirmation = useConfirmDialog();
+    const { triggerFireworks } = useFireworksCelebration();
     const [busy, setBusy] = React.useState<'merge' | 'ready' | null>(null);
 
     const pull: RepositoryChangeRequestReference | null = item.source === 'repository' && item.reference.kind === 'pull' ? item.reference : null;
@@ -203,7 +205,7 @@ export const SourceBoardActions: React.FC<{
     const stackOnTop = onStartOnTop && openPull && descriptor.features.branchHeads && isStackable(openPull) ? () => onStartOnTop(openPull) : null;
     const stackOnTopLabel = t('stacks.actions.newOnTop');
 
-    const merge = async () => {
+    const merge = async (origin?: HTMLElement) => {
         if (!openPull || !context || !mergeMethod || submitBlocked) return;
         const methodNote = t(MERGE_METHOD_KEYS[mergeMethod], { base: openPull.base });
         const stackNote = submits
@@ -230,6 +232,8 @@ export const SourceBoardActions: React.FC<{
                 method: mergeMethod,
             });
             const { merged, outcome, message } = receipt.result;
+            // One volley more than a push, plus one for each layer of a stack landing with it.
+            if (merged) triggerFireworks({ kind: 'merge', volleys: 2 + landsBelow.length, origin });
             if (submits) {
                 if (merged) toast.success(t('sourceBoard.toast.submitted', { reference }));
                 else toast.message(t('sourceBoard.toast.notSubmitted', { reference }), { description: message });
@@ -284,7 +288,7 @@ export const SourceBoardActions: React.FC<{
                         // Two halves of one control: the inner corners stay square.
                         className={cn(mergeMethods.length > 1 && 'rounded-e-none')}
                         disabled={busy === 'merge' || submitBlocked}
-                        onClick={() => void merge()}
+                        onClick={(event) => void merge(event.currentTarget)}
                     >
                         <Icon name={busy === 'merge' ? 'loader-4' : 'git-merge'} className={busy === 'merge' ? 'size-3.5 animate-spin' : 'size-3.5'} />
                         {t(MERGE_METHOD_LABELS[mergeMethod])}
@@ -485,11 +489,87 @@ export const SourceBoardPullLinks: React.FC<{
 };
 
 
+const DISCUSSION_CLOSE_REASONS = ['resolved', 'outdated', 'duplicate'] as const satisfies readonly DiscussionCloseReason[];
+const DISCUSSION_CLOSE_KEYS = {
+    resolved: 'sourceBoard.discussion.closeResolved',
+    outdated: 'sourceBoard.discussion.closeOutdated',
+    duplicate: 'sourceBoard.discussion.closeDuplicate',
+} as const satisfies Record<DiscussionCloseReason, I18nKey>;
+const DISCUSSION_CLOSE_ICONS = {
+    resolved: 'chat-check',
+    outdated: 'chat-off',
+    duplicate: 'file-copy',
+} as const satisfies Record<DiscussionCloseReason, IconName>;
+
 /**
- * Close or reopen for the previewed issue or PR, as items of its state pill's
- * menu. Null for a merged PR or a tracker item, which have neither here.
+ * What the previewed discussion's state pill offers: an open one closes for
+ * a reason (answered or settled, no longer relevant, a copy of another), a
+ * closed one reopens.
+ */
+const DiscussionStateMenuItems: React.FC<{
+    discussion: RepositoryDiscussionReference;
+    context: SourceControlReadContext;
+    onChanged: () => void;
+}> = ({ discussion, context, onChanged }) => {
+    const { t } = useI18n();
+    const { sourceControl } = useRuntimeAPIs();
+    const descriptor = useSourceControlProvider(discussion.provider);
+    const label = referenceNumberLabel(discussion, descriptor);
+    const change = async (input: { state: 'closed'; reason: DiscussionCloseReason } | { state: 'open' }) => {
+        try {
+            const base = {
+                ...context,
+                idempotencyKey: newMutationKey(),
+                target: { project: { owner: discussion.sourceRepo.owner, name: discussion.sourceRepo.repo }, number: discussion.number },
+            };
+            await sourceControl.discussionSetState(input.state === 'closed' ? { ...base, state: 'closed', reason: input.reason } : { ...base, state: 'open' });
+            toast.success(t(input.state === 'closed' ? 'sourceBoard.toast.closed' : 'sourceBoard.toast.reopened', { reference: label }));
+        } catch (error) {
+            toast.error(
+                t(input.state === 'closed' ? 'sourceBoard.toast.closeFailed' : 'sourceBoard.toast.reopenFailed', { reference: label }),
+                { description: error instanceof Error ? error.message : String(error) },
+            );
+        } finally {
+            onChanged();
+        }
+    };
+    if (discussion.state !== 'open') {
+        return (
+            <DropdownMenuItem onSelect={() => void change({ state: 'open' })}>
+                <Icon name="arrow-go-back" className="size-4 shrink-0" />
+                {t('sourceBoard.discussion.reopen')}
+            </DropdownMenuItem>
+        );
+    }
+    return (
+        <>
+            {DISCUSSION_CLOSE_REASONS.map((reason) => (
+                <DropdownMenuItem key={reason} onSelect={() => void change({ state: 'closed', reason })}>
+                    <Icon name={DISCUSSION_CLOSE_ICONS[reason]} className="size-4 shrink-0" />
+                    {t(DISCUSSION_CLOSE_KEYS[reason])}
+                </DropdownMenuItem>
+            ))}
+        </>
+    );
+};
+
+/**
+ * Close or reopen for the previewed issue, discussion or PR, as items of its
+ * state pill's menu. Null for a merged PR or a tracker item, which have
+ * neither here.
  */
 export const SourceBoardStateMenuItems: React.FC<{
+    item: ReferencePickerItem;
+    context: SourceControlReadContext;
+    onChanged: () => void;
+}> = ({ item, context, onChanged }) => {
+    if (item.source === 'repository' && item.reference.kind === 'discussion') {
+        return <DiscussionStateMenuItems discussion={item.reference} context={context} onChanged={onChanged} />;
+    }
+    return <ItemStateMenuItems item={item} context={context} onChanged={onChanged} />;
+};
+
+const ItemStateMenuItems: React.FC<{
     item: ReferencePickerItem;
     context: SourceControlReadContext;
     onChanged: () => void;
@@ -497,7 +577,7 @@ export const SourceBoardStateMenuItems: React.FC<{
     const { t } = useI18n();
     const { sourceControl } = useRuntimeAPIs();
     // An open issue or PR closes, a closed one reopens; a merged PR stays as it is.
-    const repositoryItem = item.source === 'repository' ? item.reference : null;
+    const repositoryItem = item.source === 'repository' && item.reference.kind !== 'discussion' ? item.reference : null;
     const descriptor = useSourceControlProvider(repositoryItem?.provider);
     const nextState = !repositoryItem || repositoryItem.state === 'merged' ? null : repositoryItem.state === 'open' ? 'closed' : 'open';
     const stateLabel = (() => {

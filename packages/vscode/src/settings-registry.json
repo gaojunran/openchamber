@@ -168,6 +168,12 @@
     "agentRenderToolEnabled": {
       "scope": "instance"
     },
+    "agentImageToolEnabled": {
+      "scope": "instance"
+    },
+    "agentImageModel": {
+      "scope": "instance"
+    },
     "agentToolsCodeMode": {
       "scope": "instance"
     },
@@ -175,6 +181,9 @@
       "scope": "instance"
     },
     "agentKnowledgeToolEnabled": {
+      "scope": "instance"
+    },
+    "agentWorkflowToolEnabled": {
       "scope": "instance"
     },
     "isolatedSpacesEnabled": {
@@ -187,6 +196,10 @@
       "scope": "instance"
     },
     "agentMemoryFeatureAvailable": {
+      "scope": "instance",
+      "computed": true
+    },
+    "agentWorkflowFeatureAvailable": {
       "scope": "instance",
       "computed": true
     },
@@ -216,6 +229,9 @@
     "mergedWorktreeCleanupEnabled": {
       "scope": "instance"
     },
+    "worktreeArchiveOnDoneEnabled": {
+      "scope": "instance"
+    },
     "terminalShell": {
       "scope": "instance"
     },
@@ -241,6 +257,9 @@
       "scope": "instance"
     },
     "sttLanguage": {
+      "scope": "profile"
+    },
+    "sttCorrectTranscript": {
       "scope": "profile"
     },
     "tunnelProvider": {
@@ -293,10 +312,15 @@
       "scope": "profile",
       "perSurface": true
     },
-    "sidebarProjectSortOrder": {
-      "scope": "profile"
+    "sidebarGrouping": {
+      "scope": "profile",
+      "perSurface": true
     },
-    "sidebarWorktreeSortOrder": {
+    "sidebarKeepWorkInPlace": {
+      "scope": "profile",
+      "perSurface": true
+    },
+    "sidebarProjectSortOrder": {
       "scope": "profile"
     },
     "sidebarShowChatsSection": {
@@ -314,6 +338,9 @@
     "sidebarDetailedZoneRows": {
       "scope": "profile",
       "perSurface": true
+    },
+    "sidebarWorktreeNameByBranch": {
+      "scope": "profile"
     },
     "workStatusSectionOrder": {
       "scope": "profile"
@@ -470,6 +497,14 @@
         "mobile"
       ]
     },
+    "terminalCloseOnExit": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop",
+        "mobile"
+      ]
+    },
     "autoCreateWorktree": {
       "scope": "profile"
     },
@@ -479,6 +514,13 @@
         "web",
         "desktop",
         "vscode"
+      ]
+    },
+    "sessionTabsPerWorkspace": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop"
       ]
     },
     "allowPromptingSubagentSessions": {
@@ -494,9 +536,6 @@
       "scope": "profile"
     },
     "mobileReturnKeySends": {
-      "scope": "profile"
-    },
-    "persistChatDraft": {
       "scope": "profile"
     },
     "largeTextPasteBehavior": {
@@ -551,6 +590,9 @@
       "scope": "profile"
     },
     "customMonoFont": {
+      "scope": "profile"
+    },
+    "uiFontWeight": {
       "scope": "profile"
     },
     "padding": {
@@ -801,6 +843,10 @@
       "scope": "device",
       "local": true
     },
+    "contextZoneSizes": {
+      "scope": "device",
+      "local": true
+    },
     "contextRailOrder": {
       "scope": "device",
       "local": true
@@ -814,6 +860,10 @@
       "local": true
     },
     "mobileWorkspaceHiddenTabs": {
+      "scope": "device",
+      "local": true
+    },
+    "mobileWorkStatusHiddenSections": {
       "scope": "device",
       "local": true
     },

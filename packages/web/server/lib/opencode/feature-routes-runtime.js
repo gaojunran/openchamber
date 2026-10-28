@@ -21,6 +21,7 @@ import { registerGitRoutes } from '../git/routes.js';
 import { registerDevServerRoutes } from '../dev-servers/routes.js';
 import { registerMagicPromptRoutes } from '../magic-prompts/routes.js';
 import { registerSessionFoldersRoutes } from '../session-folders/routes.js';
+import { registerSessionDraftRoutes } from '../session-drafts/routes.js';
 import { registerProjectContextRoutes } from '../project-context/routes.js';
 import { registerProjectDirectoryRoutes, registerProjectSetupRoutes } from '../projects/routes.js';
 import { registerAgentMemoryRoutes } from '../agent-memory/routes.js';
@@ -28,6 +29,9 @@ import { registerSessionKnowledgeRoutes } from '../session-knowledge/routes.js';
 import { registerMessageSearchRoutes } from '../message-search/routes.js';
 import { registerPermissionAutoAcceptRoutes } from '../permission-auto-accept/runtime.js';
 import { registerMessageQueueRoutes } from '../message-queue/runtime.js';
+import { registerAutoReviewRoutes } from '../auto-review/runtime.js';
+import { registerPrWatchRoutes } from '../pr-watch/runtime.js';
+import { registerWorkflowRoutes } from '../workflows/routes.js';
 import { registerRoutingPromptRewrite, registerRoutingRoutes } from '../routing/routes.js';
 import { registerConfigEntityRoutes } from './config-entity-routes.js';
 import { registerSettingsUtilityRoutes } from './core-routes.js';
@@ -50,7 +54,7 @@ import { getProviderSources, removeProviderConfig, upsertProviderConfig } from '
 import { getAgentSources, getAgentConfig, getAgentPermissions, createAgent, updateAgent, deleteAgent, listDisabledAgents } from './agents.js';
 import { getCommandSources, getCommandConfig, createCommand, updateCommand, deleteCommand } from './commands.js';
 import { listMcpConfigs, getMcpConfig, createMcpConfig, updateMcpConfig, deleteMcpConfig } from './mcp.js';
-import { listSnippets, getSnippet, createSnippet, updateSnippet, deleteSnippet, expandSnippets } from './snippets.js';
+import { listSnippets, getSnippet, createSnippet, updateSnippet, deleteSnippet, expandSnippets, previewSnippet } from './snippets.js';
 import {
   listPluginEntries,
   getPluginEntry,
@@ -118,6 +122,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
   let walkthroughService = null;
   let walkthroughBindingService = null;
+  let magicPrompts = null;
   let gitRepositoryCredentialRuntime = null;
   let networkOperations = null;
   let gitWorktreeCreation = null;
@@ -129,6 +134,12 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       ]);
       walkthroughService = {
         ...service,
+        // The reader's preferences, the Walkthrough Magic Prompt as the
+        // directory's project or global overrides set it. It has no built-in
+        // text, so no override means none.
+        readWalkthroughInstructions: async (directory) => (
+          magicPrompts ? (await magicPrompts.overridesForDirectory(directory))['walkthrough.instructions'] ?? '' : ''
+        ),
         // Forward only the request options by name: the remaining slots are
         // dependency overrides and must not be reachable from a route.
         getPullRequestDiff: (directory, number, readContext, { allowEmpty, sourceRepo, revision } = {}) => pullRequest.getPullRequestDiff(
@@ -256,9 +267,13 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       permissionAutoAcceptRuntime,
       worktreeBootstrapStore,
       messageQueueRuntime,
+      autoReviewRuntime,
+      prWatchRuntime = null,
       routingRuntime,
       globalEventHub,
       openchamberVersion,
+      // Absent in builds without workflows; their routes are then not served.
+      workflowRuntime = null,
     } = routeDependencies;
 
     registerSettingsUtilityRoutes(app, {
@@ -271,6 +286,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
     registerPermissionAutoAcceptRoutes(app, permissionAutoAcceptRuntime);
     registerMessageQueueRoutes(app, messageQueueRuntime);
+    registerAutoReviewRoutes(app, autoReviewRuntime);
+    if (prWatchRuntime) registerPrWatchRoutes(app, prWatchRuntime);
     registerRoutingRoutes(app, routingRuntime);
     // Before the generic OpenCode proxy: swallows the `openchamber/auto` model
     // switch and routes the sends that follow it.
@@ -331,6 +348,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     });
 
     registerOpenChamberControlRoutes(app, { controlService: openChamberControlService });
+    if (workflowRuntime) registerWorkflowRoutes(app, workflowRuntime);
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,
@@ -369,6 +387,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       updateSnippet,
       deleteSnippet,
       expandSnippets,
+      previewSnippet,
     });
 
     registerPluginRoutes(app, {
@@ -528,8 +547,9 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       }
       return null;
     };
+    const trackedItemReaders = createTrackedItemReaders({ readLiveSummaries: walkthroughBindingService.readLiveSummaries, trackers });
     trackedItemsService = createTrackedItemsService({
-      readers: createTrackedItemReaders({ readLiveSummaries: walkthroughBindingService.readLiveSummaries, trackers }),
+      readers: trackedItemReaders,
       persistence: createTrackedItemsPersistence({ dataDir: openchamberDataDir }),
       isConnectionOpen: (connectionId) => findEventClient(connectionId) !== null,
       send: (connectionId, event) => {
@@ -576,6 +596,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       }
     });
     registerTrackedItemsRoutes(app, { service: trackedItemsService });
+    // An agent waiting on its pull request reads it through the same service.
+    prWatchRuntime?.attach({ trackedItems: trackedItemsService, readers: trackedItemReaders });
     const resolveGitIdentity = async (identityId) => {
       if (identityId === 'global') {
         const identity = await getGlobalIdentity();
@@ -744,7 +766,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerTrackerRoutes(app, { registry: trackers });
     registerLinearRoutes(app);
     registerDevServerRoutes(app, { scanner: devServerScanner, getOwnPorts });
-    registerMagicPromptRoutes(app, {
+    magicPrompts = registerMagicPromptRoutes(app, {
       fsPromises,
       path,
       openchamberDataDir,
@@ -783,6 +805,22 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         for (const client of clients) {
           try {
             writeSseEvent(client, { type: 'openchamber:session-folders-changed', properties: { updatedAt } });
+          } catch {
+            clients.delete(client);
+          }
+        }
+      },
+    });
+    registerSessionDraftRoutes(app, {
+      fsPromises,
+      path,
+      openchamberDataDir,
+      // Drafts are shared by every client of this server, like folders.
+      onChanged: (updatedAt) => {
+        const clients = getOpenChamberEventClients();
+        for (const client of clients) {
+          try {
+            writeSseEvent(client, { type: 'openchamber:session-drafts-changed', properties: { updatedAt } });
           } catch {
             clients.delete(client);
           }

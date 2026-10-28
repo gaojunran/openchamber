@@ -76,6 +76,8 @@ import { useI18n } from '@/lib/i18n';
 import { generateCommitMessage, stageGitFile, stageGitFiles, unstageGitFile, unstageGitFiles } from '@/lib/gitApi';
 import type { GitRemote } from '@/lib/gitApi';
 import { getLanguageFromExtension, isImageFile } from '@/lib/toolHelpers';
+import { diffCommentOriginFromSource, type DiffCommentOrigin } from '@/lib/diffCommentOrigin';
+import { useWholeFileComment } from '@/components/comments';
 import {
   useGitStore,
   useGitIdentity,
@@ -95,6 +97,8 @@ import { useGitPublishChooser } from '@/components/views/git/useGitPublishChoose
 import { PublishDialog } from '@/components/views/git/PublishDialog';
 import { settleGitFileReverts } from './mobileChangesOperations';
 import { commitAndSwitchBranch } from './mobileDirtySwitch';
+import { useCommitCelebration } from '@/components/views/git/useCommitCelebration';
+import { useGitCleanLine } from '@/components/views/git/useGitCleanLine';
 import { normalizePath } from '@/lib/pathNormalization';
 
 type SyncAction = 'fetch' | 'pull' | 'sync' | 'publish' | null;
@@ -278,6 +282,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   }, [initialDiff]);
   const [syncAction, setSyncAction] = React.useState<SyncAction>(null);
   const [commitAction, setCommitAction] = React.useState<CommitAction>(null);
+  const commitCelebration = useCommitCelebration();
   const [commitMessage, setCommitMessage] = React.useState('');
   const [revertingPaths, setRevertingPaths] = React.useState<Set<string>>(new Set());
   const [isRevertingAll, setIsRevertingAll] = React.useState(false);
@@ -388,6 +393,11 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     return null;
   }, [branchComparison.base, currentBranch, mode, prComparison.diffUnavailable, selectedCommitHash, selectedPr]);
   const comparisonRevision = mode === 'branch' ? branchComparison.revision : '';
+  const selectedPrHead = selectedPr ? prComparison.prs.find((pr) => pr.number === selectedPr.number)?.headSha : undefined;
+  const commentOrigin = React.useMemo(
+    () => diffCommentOriginFromSource(comparisonSource, { provider: prComparison.provider, revision: selectedPrHead }),
+    [comparisonSource, prComparison.provider, selectedPrHead],
+  );
   const comparison = useGitComparison(currentDirectory || null, comparisonSource, visible && isGitRepo === true, comparisonRevision, prComparison.readContext, prComparison.provider);
   const { fetchDiff: loadComparisonDiff, fetchFullFile: loadComparisonFullFile } = comparison;
   const comparisonFiles = React.useMemo(() => comparison.files ? [...comparison.files].sort((a, b) => a.path.localeCompare(b.path)) : null, [comparison.files]);
@@ -897,7 +907,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     }
   }, [currentDirectory, stagedChangeEntries, t]);
 
-  const handleCommit = async (options: { pushAfter?: boolean } = {}) => {
+  const handleCommit = async (options: { pushAfter?: boolean; origin?: HTMLElement } = {}) => {
     if (!currentDirectory) return;
     if (!commitMessage.trim()) {
       toast.error(t('gitView.toast.enterCommitMessage'));
@@ -913,9 +923,9 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     let recovery: ReturnType<typeof operationRecovery.start> = null;
     let commitOutcome: 'pending' | 'local' | 'published' = 'pending';
     try {
-      await git.createGitCommit(currentDirectory, commitMessage.trim(), { files: filesToCommit });
+      const commit = await git.createGitCommit(currentDirectory, commitMessage.trim(), { files: filesToCommit });
       commitOutcome = 'local';
-      toast.success(t('gitView.toast.commitCreated'));
+      const deletion = commitCelebration.committed(commit.summary, options);
       setCommitMessage('');
       setGeneratedHighlights([]);
 
@@ -930,7 +940,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
         setSyncAction('publish');
         await executePush();
         commitOutcome = 'published';
-        toast.success(t('gitView.publish.succeeded'));
+        commitCelebration.pushed({ deletion, origin: options.origin });
       }
       await refreshAfterGitAction();
     } catch (error) {
@@ -1177,6 +1187,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
       <MobileDiffDetail
         path={activeComparisonPath}
         subtitle={[modeLabel, sourceLabel].filter(Boolean).join(' · ')}
+        commentOrigin={commentOrigin}
         diff={activeFullComparisonDiff ?? (activeComparisonDiff.status === 'ready' ? activeComparisonDiff.diff : null)}
         fileExists={!comparison.files || comparison.files.some((file) => file.path === activeComparisonPath)}
         error={comparison.error ?? (activeComparisonDiff.status === 'error' ? activeComparisonDiff.message : null)}
@@ -1439,8 +1450,8 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
               onInsertHighlights={handleInsertHighlights}
               onGenerateMessage={handleGenerateCommitMessage}
               isGeneratingMessage={isGeneratingMessage}
-              onCommit={() => void handleCommit({ pushAfter: false })}
-              onCommitAndPush={() => void handleCommit({ pushAfter: true })}
+              onCommit={(origin) => void handleCommit({ pushAfter: false, origin })}
+              onCommitAndPush={(origin) => void handleCommit({ pushAfter: true, origin })}
               commitAction={commitAction}
               networkOperationBlocked={operationRecovery.blocked}
               gitmojiEnabled={false}
@@ -1450,7 +1461,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <MobileChangesState icon message={t('gitView.empty.cleanTitle')} description={t('mobile.changes.cleanDescription')} />
+          <MobileCleanState />
         </div>
       )}
       {currentDirectory && (
@@ -1520,6 +1531,14 @@ const MobileChangesState: React.FC<{
   </div>
 );
 
+// Its own component so each time the tree turns clean, or the surface opens on
+// a clean tree, it picks a new line.
+const MobileCleanState: React.FC = () => {
+  const { t } = useI18n();
+  const description = useGitCleanLine(t('mobile.changes.cleanDescription'));
+  return <MobileChangesState icon message={t('gitView.empty.cleanTitle')} description={description} />;
+};
+
 const MobileDiffDetail: React.FC<{
   path: string;
   subtitle?: string;
@@ -1533,12 +1552,15 @@ const MobileDiffDetail: React.FC<{
   onExpandContextRequest?: (request: ContextExpansionRequest) => void;
   pendingContextExpansion?: ContextExpansionRequest | null;
   contextLoading?: boolean;
-}> = ({ path, subtitle, diff, staged = false, fileExists, unavailableReason = null, error = null, onBack, onRetry, onExpandContextRequest, pendingContextExpansion, contextLoading }) => {
+  /** The comparison this file comes from, for comments; absent for uncommitted changes. */
+  commentOrigin?: DiffCommentOrigin;
+}> = ({ path, subtitle, diff, staged = false, fileExists, unavailableReason = null, error = null, onBack, onRetry, onExpandContextRequest, pendingContextExpansion, contextLoading, commentOrigin }) => {
   const { t } = useI18n();
   const language = React.useMemo(() => getLanguageFromExtension(path) || 'text', [path]);
   const hideWhitespace = useUIStore((state) => state.diffHideWhitespace);
   const setHideWhitespace = useUIStore((state) => state.setDiffHideWhitespace);
   const whitespaceState = hideWhitespace ? t('diffView.whitespace.hidden') : t('diffView.whitespace.shown');
+  const wholeFileComment = useWholeFileComment({ fileLabel: path, origin: commentOrigin });
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground">
@@ -1568,7 +1590,22 @@ const MobileDiffDetail: React.FC<{
         >
           <WhitespaceToggleIcon hidden={hideWhitespace} className="size-5" />
         </button>
+        <button
+          type="button"
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-lg hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            wholeFileComment.isOpen ? 'text-foreground' : 'text-muted-foreground',
+          )}
+          aria-label={t('inlineComment.actions.commentOnFile')}
+          aria-pressed={wholeFileComment.isOpen}
+          title={t('inlineComment.actions.commentOnFile')}
+          onClick={wholeFileComment.toggle}
+        >
+          <Icon name="chat-1" className="size-5" />
+        </button>
       </header>
+      {wholeFileComment.cards}
+      {wholeFileComment.editor}
       <div className="min-h-0 flex-1 overflow-hidden">
         {!fileExists ? (
           <MobileChangesState icon message={t('mobile.changes.diffDetail.missingTitle')} description={t('mobile.changes.diffDetail.missingDescription')} />
@@ -1604,6 +1641,7 @@ const MobileDiffDetail: React.FC<{
               fileDiff={diff.fileDiff}
               language={language}
               fileName={path}
+              commentOrigin={commentOrigin}
               renderSideBySide={false}
               wrapLines={true}
               hideWhitespace={hideWhitespace}

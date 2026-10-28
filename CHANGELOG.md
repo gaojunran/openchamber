@@ -2,6 +2,147 @@
 
 <!-- Legacy copy for app versions up to 1.22.1, which fetch this file for their update notes. Generated from changelog/*.md while it exists; delete it after 2026-09-19 and nothing will recreate it. -->
 
+## [2.5.3] - 2026-10-28
+
+### New
+
+- **Snippets:** save a message, a piece of selected text or your draft as a snippet from its menu or the `#` picker. In Settings you can rename a snippet, move it between project and global, and preview what it expands to.
+- **Images:** agents can generate images with an image model you pick in Settings > General > OpenChamber Tools. The pictures show in the chat with a download button. Off by default.
+- **Auto-review:** the review loop keeps going when you close the tab or lock the phone. It stops after five rounds, notifies you once when it ends, and a disputed result shows both positions in place.
+- Header tabs: a new option keeps separate tabs for each project and worktree, and shows the tabs of the place you are in.
+- Agents: an agent can wait on its pull request and wakes up when a check fails or passes, someone comments, or it is merged. The composer shows the pull request with Stop watching.
+- Sidebar: pin a worktree from its menu to keep it on top. "Name worktrees by branch" in the display menu shows the branch first.
+- Terminal: a tab closes when its shell or action exits. Turn it off in Settings > General > Terminal to keep the output.
+- Drafts: a new session shows "N drafts" when other drafts wait in the same folder, to open or discard them.
+- Dictation: Whisper large-v3 turbo and Qwen3-ASR join the local models, the dictation language helps them recognize short phrases, and "Fix misheard words" can clean up the text with the Small Model.
+- Appearance: Interface font weight under Density & type, from Regular to Strong.
+- Usage: the OpenCode Go page shows your OpenCode Console budgets.
+- The app tells a small joke now and then: in the new-session heading, on a clean Git panel, after a late-night push. Pushes and merges throw confetti.
+
+### Improvements
+
+- Sidebar: each row shows what it is on the left and its state on the right, project headers read as sections, and times and branches are easier to read. A worktree is named by its task, never by one of its sessions.
+- Sidebar: Track and Done sit only on rows that are a work of their own, and a fork is a work of its own.
+- New session: the first message shows at once while the session is created, and a second Enter cannot start a second session (thanks to @yulia-ivashko).
+- Work Status: the card stays beside Files, Changes or the browser when the window has room for both.
+- Themes: secondary text, links and quotes are readable in every built-in theme, and dark themes keep secondary text quieter than the body.
+- Files: document toolbars share one look and keep their buttons in place, and Files can comment on a whole file from its toolbar.
+- Files: an open file or plan updates as soon as it changes on disk.
+- Composer: `@` session search keeps matching across the words of a title.
+- Small Model: a session on a small model such as DeepSeek or GLM flash keeps side work on that model.
+- Worktrees: an issue worktree keeps the agent's branch name with the issue number in front, such as `fix/5747-stale-favorite-models`.
+
+### Fixes
+
+- Providers: connecting with an API key or OAuth works on the first try.
+- Sessions: while a session runs in a folder with many sessions, the app no longer sends about a gigabyte an hour to OpenCode.
+- Git: GitHub Enterprise and self-hosted GitLab behind a company certificate connect.
+- Windows: upgrading OpenCode from the app no longer leaves OpenCode broken until a reinstall.
+- Worktrees: deleting a worktree that sits on main no longer offers to delete main (thanks to @yulia-ivashko).
+- Sessions: a session moved to another folder leaves no copy behind (thanks to @yulia-ivashko), and permission cards reach a session the agent moved mid-turn (thanks to @mossgowild).
+- Sidebar: sessions in work outside your projects stay in In work (thanks to @alohaninja).
+- Sidebar: a click anywhere on a row opens it, and a dragged session lands only in the folder under the pointer.
+- Issues and PRs: a folder with several GitHub checkouts shows the list instead of a validation error (thanks to @guidan-nick).
+- Desktop: a notification for another instance opens in the window that shows it (thanks to @timothywang21).
+- Desktop: the update download progress stops at 100% (thanks to @bashrusakh).
+- Desktop: the dock badge counts only chats the sidebar shows.
+- Browser: an app in the agent's hidden tab runs at full speed.
+- Settings/Providers: a custom provider kept in `opencode.jsonc` can be edited (thanks to @yulia-ivashko).
+- Skills: turning a skill off works in projects with non-Latin folder names (thanks to @yulia-ivashko).
+- Plugins: enable and disable rules in the plugin list no longer show as broken plugins.
+- Chat: a link to a folder opens it in Finder (thanks to @yulia-ivashko).
+- Chat: reference chips no longer cut off letters.
+- Models: the favorite-model shortcut skips favorites whose provider is disconnected.
+- Header: the session menu offers Move to project when session tabs are off.
+- Composer: the cross in the drafts menu discards the draft instead of opening it.
+- Comments: the whole-file comment field opens where you are in a long file.
+- Folder trust: the app asks again when a local file a trusted plugin imports changes.
+- Web: a page whose first load failed retries instead of staying empty.
+- CLI: `openchamber serve` started from the app's terminal serves its own build.
+
+### Misc
+
+- Bundled OpenCode updated to 2.2.0, now the minimum supported version.
+- Git library updated past four published security advisories.
+- Desktop: Help > Suggest a Feature opens a feature request.
+
+## [2.5.2] - 2026-10-26
+
+### New
+
+- **Sidebar:** the sidebar lists works. A work is a worktree with all its sessions, or a session in the main checkout with its forks, reviews and subagents, shown as one row with the task name, PR or issue and live state. Done finishes a work and closes its tabs.
+- **Worktree archive:** archiving a worktree removes its folder, so it takes no disk space, and keeps its branch, sessions and even uncommitted changes. Restore on the Archive page brings it all back, and cleanup after a merged PR archives the same way.
+- **Folder trust:** before OpenCode runs a folder's plugins, MCP servers or other commands from its configuration, the app shows what would run and asks you to trust it. It asks again when that configuration changes; projects already in your list are trusted.
+- GitHub Discussions: discussions sit beside issues and pull requests on the board, in the attach menu and in New worktree. You can read and reply, mark an answer, close or reopen them and attach one to a message.
+- Composer: type `@` to mention another session or one of its messages, or paste its link. The agent gets it as context, and the mention shows as a chip that opens the session.
+- Comments: comment on a whole file from its header in Changes and the walkthrough.
+- Walkthrough: each stop explains what the code now does and points out the trade-offs you accept with the change, and every file it skipped gets a one-line note. Magic Prompts has a Walkthrough page for your own instructions.
+- Mobile: the workspace drawer has a Work status tab with subagents, the branch and its PR checks, pinned messages and linked issues.
+- Chat: a `diff` code block in a reply shows as a proposed change in the diff preview (thanks to @cemarta7).
+- Chat: the icon on a Read File row opens the image the agent read in the expanded panel (thanks to @yulia-ivashko).
+- Chat: emoji autocomplete on `:` in the message box and comment fields.
+- Sessions: a session an agent started shows "From session" with the sender's title under its first message, and the title opens that session.
+- Diagnostics: the diagnostic timeline (Cmd/Ctrl+Shift+L) can save an OpenCode memory snapshot to attach to a bug report. It needs OpenCode 2.1.4.
+- Settings/Instances: instances added with a relay pairing link can be renamed.
+
+### Improvements
+
+- New logo and app icons on every platform (thanks to @yulia-ivashko).
+- Chat: the prompt navigator is a small indicator in the chat's top corner. Hover, click or the shortcut open a list of every prompt in the session.
+- Sessions: unsent drafts are kept on the server and show in the sidebar on every device.
+- Side panel: all its tabs share one width that stays the same across projects and worktrees, and an expanded panel leaves the chat on screen (thanks to @yulia-ivashko).
+- Issues and PRs: previews show GitHub text the way GitHub does, with alerts, emoji, review suggestions as diffs, and links on #123, @user and commit ids.
+- Composer: autocomplete lists open next to the text you are typing.
+- Sessions: a new session gets a short topic title from its first message.
+- Worktrees: a worktree made from an issue gets its branch renamed after the task, such as `issue-180-documentation-catalog`.
+- Browser: the dev server list shows your project's servers first with their folder, and tucks the rest behind "Show hidden ports" (thanks to @yulia-ivashko).
+- Work Status: the Checks row reads `7/9` with a coloured dot, as on GitHub (thanks to @yulia-ivashko).
+- Interface size: toasts and text across the header, Work Status, Settings, the command palette and the editor follow the interface size and font (thanks to @mossgowild, @yulia-ivashko).
+- Toasts: the close cross counts down to when the toast goes away, and on the phone toasts are one-row banners.
+- Chat: a failed `!` command shows why it failed on its collapsed row (thanks to @kemaladlig, @yulia-ivashko).
+- Composer: with messages queued, ArrowUp in an empty message box takes the newest one out of the queue to edit.
+- Composer: the focus mode button is gone from the footer; Cmd/Ctrl+Shift+E still opens focus mode.
+
+### Fixes
+
+- Composer: a message goes out with the agent the picker shows. Returning to a session could send it as Plan or another agent.
+- Files: a file over 10 MB shows a message when opened, and the app no longer freezes on it. Attaching one works by path on desktop and shows a message elsewhere.
+- Skills: opening the Skills catalog no longer starts thousands of git processes, and a source with thousands of skills no longer freezes the page (thanks to @yulia-ivashko).
+- Skills: on Windows, catalog copies a virus scanner kept in the temp folder get cleaned up (thanks to @yulia-ivashko).
+- Git: refreshing Git status starts about half as many git processes, which antivirus software on Windows slowed down (thanks to @yulia-ivashko).
+- GitHub: with the gh sign-in, the app no longer starts a `gh auth token` process for every GitHub read (thanks to @yulia-ivashko).
+- Git: a checked-out tag no longer shows up as a branch or with a push count (thanks to @yulia-ivashko).
+- Settings/Git hosts: a Forgejo or Gitea server that requires a sign-in can be added with a token (thanks to @yulia-ivashko).
+- Sessions: the turn timer keeps its start when another device opens the session mid-turn (thanks to @Naputt1, @yulia-ivashko).
+- Chat: a subagent that moves to another worktree keeps updating its panel and gets its done tick (thanks to @yulia-ivashko).
+- Chat: after a reload, turn stats leave out response speed, which showed a wrong, lower number (thanks to @yulia-ivashko).
+- Chat: permission and form card buttons have their tinted fill again (thanks to @mossgowild).
+- Chat: the effort button is capitalized the same as its menu (thanks to @mossgowild).
+- Chat: the model picker opened with its shortcut stays open while you type to search (thanks to @ChangeHow).
+- Chat: the comment field on a quote stays on screen near the window's edge (thanks to @ChangeHow).
+- Chat: the text selection menu closes when you leave the chat.
+- Comments: a comment on a pull request or commit tells the agent which diff its lines come from, and its draft shows only on that diff.
+- Walkthrough: regenerating with another model or language writes a fresh walkthrough. The second model used to copy the first one.
+- Plans: Improve no longer offers Run as goal, which made the agent implement the plan (thanks to @yulia-ivashko).
+- Files: the Markdown preview has one find button, and it works (thanks to @yulia-ivashko).
+- Files: a drag across line numbers keeps extending the selection when the pointer drifts into the code, and scrolls at the edge (thanks to @yulia-ivashko).
+- Files: PDF previews keep their page and audio and video keep playing when the sign-in refreshes (thanks to @yulia-ivashko).
+- Desktop: a session link opened from outside the app brings its window to the front on macOS (thanks to @JosueGalRe).
+- Mobile: tapping a file link in the chat opens the file (thanks to @yulia-ivashko).
+- Mobile: the iPhone app fills the inner screen of an unfolded iPhone Duo (thanks to @yulia-ivashko).
+- Mobile: on iPad the sidebar stays in place when the keyboard opens.
+- Mobile: rows opening or closing in the sidebar no longer show their swipe actions through the text, and slide open smoothly.
+- CLI: updating recognizes an install made with pnpm.
+
+### SDK
+
+- Work Status: with `contributes.statusSection.source`, an extension describes its section as data served by its service, and the app draws the rows, charts and controls itself without a frame. The shape is `guestStatusViewSchema` in the SDK.
+- Sessions: session records from `onSessions` carry `links`, every issue and pull request linked to the session with its title, url and kind.
+
+### Misc
+
+- Bundled OpenCode updated to 2.1.4.
+
 ## [2.5.1] - 2026-10-23
 
 ### New

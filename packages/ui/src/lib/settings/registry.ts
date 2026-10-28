@@ -23,7 +23,7 @@ import { getDirectoryShowHidden, setDirectoryShowHidden } from '@/lib/directoryS
 import type { DraftStarterRef } from '@/lib/draftStarters';
 import { sanitizeStarterRefs } from '@/lib/draftStarters';
 import { getFilesViewShowGitignored, setFilesViewShowGitignored } from '@/lib/filesViewShowGitignored';
-import { isMonoFontOption, isUiFontOption, type MonoFontOption, type UiFontOption } from '@/lib/fontOptions';
+import { UI_FONT_WEIGHT_OPTIONS, isMonoFontOption, isUiFontOption, type MonoFontOption, type UiFontOption } from '@/lib/fontOptions';
 import { LOCALES } from '@/lib/i18n/runtime';
 import { useI18nStore } from '@/lib/i18n/store';
 import { isInputHistoryLimit, isInputHistoryScope, type InputHistoryScope } from '@/lib/inputHistoryScope';
@@ -296,9 +296,13 @@ export const SETTINGS_REGISTRY = {
   browserProvider: field({ scope: 'instance', parse: parseNonEmptyString, ui: uiStore('browserProvider', (v) => useUIStore.getState().setBrowserProvider(v)) }),
   agentNotifyToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentNotifyToolEnabled', (v) => useUIStore.getState().setAgentNotifyToolEnabled(v)) }),
   agentRenderToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentRenderToolEnabled', (v) => useUIStore.getState().setAgentRenderToolEnabled(v)) }),
+  agentImageToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentImageToolEnabled', (v) => useUIStore.getState().setAgentImageToolEnabled(v)) }),
+  // `provider/model` of an image model; the server checks the shape.
+  agentImageModel: field({ scope: 'instance', parse: parseNonEmptyString, ui: uiStore('agentImageModel', (v) => useUIStore.getState().setAgentImageModel(v)) }),
   agentToolsCodeMode: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentToolsCodeMode', (v) => useUIStore.getState().setAgentToolsCodeMode(v)) }),
   agentMemoryToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentMemoryToolEnabled', (v) => useUIStore.getState().setAgentMemoryToolEnabled(v)) }),
   agentKnowledgeToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentKnowledgeToolEnabled', (v) => useUIStore.getState().setAgentKnowledgeToolEnabled(v)) }),
+  agentWorkflowToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentWorkflowToolEnabled', (v) => useUIStore.getState().setAgentWorkflowToolEnabled(v)) }),
   // The isolated-spaces switch. The server reads it once at start; a change takes effect at the
   // next start, which the settings row says. Never shown in VS Code (decision 16 of the design).
   isolatedSpacesEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('isolatedSpacesEnabled', (v) => useUIStore.getState().setIsolatedSpacesEnabled(v)) }),
@@ -320,6 +324,13 @@ export const SETTINGS_REGISTRY = {
     parse: parseBoolean,
     ui: uiStore('agentMemoryFeatureAvailable', (v) => useUIStore.getState().setAgentMemoryFeatureAvailable(v), { autoSave: false }),
   }),
+  // Server-owned: whether this build has agent workflows (`OPENCHAMBER_WORKFLOWS_ENABLE`).
+  agentWorkflowFeatureAvailable: field({
+    scope: 'instance',
+    computed: true,
+    parse: parseBoolean,
+    ui: uiStore('agentWorkflowFeatureAvailable', (v) => useUIStore.getState().setAgentWorkflowFeatureAvailable(v), { autoSave: false }),
+  }),
   // Server-owned: whether the overview page exists in this process (`OPENCHAMBER_OVERVIEW_ENABLED`).
   overviewFeatureAvailable: field({
     scope: 'instance',
@@ -340,6 +351,7 @@ export const SETTINGS_REGISTRY = {
   sessionRetentionOnlyArchived: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionRetentionOnlyArchived', (v) => useUIStore.getState().setSessionRetentionOnlyArchived(v)) }),
   sessionRetentionAction: field({ scope: 'instance', parse: parseOneOf(['archive', 'delete']), ui: uiStore('sessionRetentionAction', (v) => useUIStore.getState().setSessionRetentionAction(v)) }),
   mergedWorktreeCleanupEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('mergedWorktreeCleanupEnabled', (v) => useUIStore.getState().setMergedWorktreeCleanupEnabled(v)) }),
+  worktreeArchiveOnDoneEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('worktreeArchiveOnDoneEnabled', (v) => useUIStore.getState().setWorktreeArchiveOnDoneEnabled(v)) }),
   terminalShell: field({ scope: 'instance', parse: parseTerminalShell, ui: uiStore('terminalShell', (v) => useUIStore.getState().setTerminalShell(v)) }),
   terminalLoginShells: field({ scope: 'instance', parse: parseTerminalShells(isTerminalShell), ui: uiStore('terminalLoginShells', (v) => useUIStore.getState().setTerminalLoginShells(v)) }),
   openInAppId: field({ scope: 'instance', parse: parseNonEmptyTrimmedString }),
@@ -349,6 +361,7 @@ export const SETTINGS_REGISTRY = {
   sttModel: field({ scope: 'instance', parse: parseTrimmedStringUpTo(256), ui: configField('sttModel') }),
   sttLocalModel: field({ scope: 'instance', parse: parseTrimmedStringUpTo(256), ui: configField('sttLocalModel') }),
   sttLanguage: field({ scope: 'profile', parse: parseTrimmedStringUpTo(64), ui: configField('sttLanguage') }),
+  sttCorrectTranscript: field({ scope: 'profile', parse: parseBoolean, ui: configField('sttCorrectTranscript') }),
 
   // ── Tunnels (instance) ──
   tunnelProvider: field({ scope: 'instance', parse: mapParser(parseNonEmptyTrimmedString, (value) => value.toLowerCase()) }),
@@ -372,12 +385,14 @@ export const SETTINGS_REGISTRY = {
   // must not flip the desktop sidebar (and vice versa).
   sidebarViewMode: field({ scope: 'profile', perSurface: true, parse: parseOneOf(['projects', 'timeline']), ui: sessionDisplayField('sidebarViewMode') }),
   sidebarListSessionGrouping: field({ scope: 'profile', perSurface: true, parse: parseOneOf(['project', 'time']), ui: sessionDisplayField('listSessionGrouping') }),
+  sidebarGrouping: field({ scope: 'profile', perSurface: true, parse: parseOneOf(['project', 'time']), ui: sessionDisplayField('sidebarGrouping') }),
+  sidebarKeepWorkInPlace: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('keepWorkInPlace') }),
   sidebarProjectSortOrder: field({ scope: 'profile', parse: parseOneOf(['manual', 'a-z', 'z-a', 'date-added', 'recent']), ui: sessionDisplayField('projectSortOrder') }),
-  sidebarWorktreeSortOrder: field({ scope: 'profile', parse: parseOneOf(['recent', 'manual', 'a-z']), ui: sessionDisplayField('worktreeSortOrder') }),
   sidebarShowChatsSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showChatsSection') }),
   sidebarShowWorkSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showWorkSection') }),
   sidebarShowPinnedSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showPinnedSection') }),
   sidebarDetailedZoneRows: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('detailedZoneRows') }),
+  sidebarWorktreeNameByBranch: field({ scope: 'profile', parse: parseBoolean, ui: sessionDisplayField('worktreeNameByBranch') }),
 
   // ── Work status ──
   workStatusSectionOrder: field({
@@ -461,8 +476,10 @@ export const SETTINGS_REGISTRY = {
   openLinksInBrowserPanel: field({ scope: 'profile', surfaces: ['desktop'], parse: parseBoolean, ui: uiStore('openLinksInBrowserPanel', (v) => useUIStore.getState().setOpenLinksInBrowserPanel(v)) }),
   liveBrowserTabLimit: field({ scope: 'profile', surfaces: ['desktop'], parse: parseIntegerInRange(LIVE_BROWSER_TABS_MIN, LIVE_BROWSER_TABS_MAX), ui: uiStore('liveBrowserTabLimit', (v) => useUIStore.getState().setLiveBrowserTabLimit(v)) }),
   openTrackerLinksOnBoard: field({ scope: 'profile', surfaces: ['web', 'desktop', 'mobile'], parse: parseBoolean, ui: uiStore('openTrackerLinksOnBoard', (v) => useUIStore.getState().setOpenTrackerLinksOnBoard(v)) }),
+  terminalCloseOnExit: field({ scope: 'profile', surfaces: ['web', 'desktop', 'mobile'], parse: parseBoolean, ui: uiStore('terminalCloseOnExit', (v) => useUIStore.getState().setTerminalCloseOnExit(v)) }),
   autoCreateWorktree: field({ scope: 'profile', parse: parseBoolean }),
   sessionTabsEnabled: field({ scope: 'profile', surfaces: ['web', 'desktop', 'vscode'], parse: parseBoolean, ui: uiStore('sessionTabsEnabled', (v) => useUIStore.getState().setSessionTabsEnabled(v)) }),
+  sessionTabsPerWorkspace: field({ scope: 'profile', surfaces: ['web', 'desktop'], parse: parseBoolean, ui: uiStore('sessionTabsPerWorkspace', (v) => useUIStore.getState().setSessionTabsPerWorkspace(v)) }),
   allowPromptingSubagentSessions: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('allowPromptingSubagentSessions', (v) => useUIStore.getState().setAllowPromptingSubagentSessions(v)) }),
 
   // ── Composer (profile) ──
@@ -470,7 +487,6 @@ export const SETTINGS_REGISTRY = {
   enterToSend: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('enterToSend', (v) => useUIStore.getState().setEnterToSend(v)) }),
   enterToSendConfigured: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('enterToSendConfigured', (v) => useUIStore.getState().setEnterToSendConfigured(v)) }),
   mobileReturnKeySends: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('mobileReturnKeySends', (v) => useUIStore.getState().setMobileReturnKeySends(v)) }),
-  persistChatDraft: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('persistChatDraft', (v) => useUIStore.getState().setPersistChatDraft(v)) }),
   largeTextPasteBehavior: field({ scope: 'profile', parse: parseLargeTextPasteBehavior, ui: uiStore('largeTextPasteBehavior', (v) => useUIStore.getState().setLargeTextPasteBehavior(v)) }),
   savePastedImagesAsFiles: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('savePastedImagesAsFiles', (v) => useUIStore.getState().setSavePastedImagesAsFiles(v)) }),
   followUpBehavior: field({
@@ -516,6 +532,7 @@ export const SETTINGS_REGISTRY = {
   monoFont: field({ scope: 'profile', parse: parseMonoFont, ui: uiStore('monoFont', (v) => useUIStore.getState().setMonoFont(v)) }),
   customUiFont: field({ scope: 'profile', parse: parseTextUpTo(100), ui: uiStore('customUiFont', (v) => useUIStore.getState().setCustomUiFont(v)) }),
   customMonoFont: field({ scope: 'profile', parse: parseTextUpTo(100), ui: uiStore('customMonoFont', (v) => useUIStore.getState().setCustomMonoFont(v)) }),
+  uiFontWeight: field({ scope: 'profile', parse: parseOneOf(UI_FONT_WEIGHT_OPTIONS), ui: uiStore('uiFontWeight', (v) => useUIStore.getState().setUiFontWeight(v)) }),
   padding: field({ scope: 'profile', perSurface: true, parse: parseFiniteNumber, ui: uiStore('padding', (v) => useUIStore.getState().setPadding(v)) }),
   cornerRadius: field({ scope: 'profile', perSurface: true, parse: parseFiniteNumber, ui: uiStore('cornerRadius', (v) => useUIStore.getState().setCornerRadius(v)) }),
   shortcutOverrides: field({
@@ -654,10 +671,12 @@ export const LOCAL_DEVICE_KEYS = [
   'sidebarFoldedForExpandedZone',
   'sidebarWidth',
   'contextPanelByDirectory',
+  'contextZoneSizes',
   'contextRailOrder',
   'contextRailHiddenSurfaces',
   'mobileWorkspaceTabOrder',
   'mobileWorkspaceHiddenTabs',
+  'mobileWorkStatusHiddenSections',
   'contextSurfaceZones',
   'contextEditorTreeVisible',
   'contextEditorVisible',

@@ -6,6 +6,8 @@ import { subscribeRuntimeEndpointChanged } from './runtime-switch';
 import { isVSCodeRuntime } from './desktop';
 import { canDriveBrowserPage } from './browser/hostCapability';
 import { messageQueueUpdatedEventSchema, type MessageQueueUpdatedEvent } from '@/stores/messageQueueStore';
+import { autoReviewUpdatedEventSchema, type AutoReviewUpdatedEvent } from '@/stores/useAutoReviewStore';
+import { prWatchUpdatedEventSchema, type PrWatchUpdatedEvent } from '@/sync/pr-watch';
 import { sessionWarmingSnapshotSchema, type SessionWarmingSnapshot } from '@/stores/useSessionWarmingStore';
 import { z } from 'zod';
 import { trackedItemRecordsSchema } from './trackedItems/model';
@@ -108,6 +110,10 @@ type ProjectContextChangedEvent = { type: 'project-context-changed' } & z.infer<
 /** A client changed the chat folders; `updatedAt` is the stored revision, so a client already showing it skips the read. */
 const sessionFoldersChangedSchema = z.object({ updatedAt: z.number().finite() });
 type SessionFoldersChangedEvent = { type: 'session-folders-changed' } & z.infer<typeof sessionFoldersChangedSchema>;
+
+/** A client saved, sent or discarded a session draft; every client reads the drafts again. */
+const sessionDraftsChangedSchema = z.object({ updatedAt: z.number().finite() });
+type SessionDraftsChangedEvent = { type: 'session-drafts-changed' } & z.infer<typeof sessionDraftsChangedSchema>;
 
 /**
  * The extension chosen as browser provider can no longer serve (paused,
@@ -234,6 +240,8 @@ type OpenChamberEvent =
   | RoutingPermissionHeldEvent
   | RoutingSafetySkippedEvent
   | MessageQueueUpdatedEvent
+  | AutoReviewUpdatedEvent
+  | PrWatchUpdatedEvent
   | PermissionPolicyEvent
   /** Which sessions the server keeps warm, as a full snapshot. */
   | { type: 'session-warming'; snapshot: SessionWarmingSnapshot }
@@ -252,6 +260,7 @@ type OpenChamberEvent =
   | LimitFailoverEvent
   | ProjectContextChangedEvent
   | SessionFoldersChangedEvent
+  | SessionDraftsChangedEvent
   | AgentMemoryChangedEvent;
 type Listener = (event: OpenChamberEvent) => void;
 
@@ -451,6 +460,22 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     return;
   }
 
+  if (envelope.type === 'openchamber:pr-watch.updated') {
+    const parsed = prWatchUpdatedEventSchema.safeParse(envelope);
+    if (parsed.success) {
+      for (const listener of listeners) listener(parsed.data);
+    }
+    return;
+  }
+
+  if (envelope.type === 'openchamber:auto-review.updated') {
+    const parsed = autoReviewUpdatedEventSchema.safeParse(envelope);
+    if (parsed.success) {
+      for (const listener of listeners) listener(parsed.data);
+    }
+    return;
+  }
+
   if (envelope.type === 'openchamber:permission-auto-accept.updated' || envelope.type === 'openchamber:permission-auto-accept.left-for-user') {
     const classified = classifyStreamPayload(envelope, undefined);
     if (classified.kind !== 'events') return;
@@ -539,6 +564,12 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
   if (envelope.type === 'openchamber:project-context-changed') {
     const parsed = projectContextChangedSchema.safeParse(envelope.properties);
     if (parsed.success) for (const listener of listeners) listener({ type: 'project-context-changed', ...parsed.data });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:session-drafts-changed') {
+    const parsed = sessionDraftsChangedSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'session-drafts-changed', ...parsed.data });
     return;
   }
 
