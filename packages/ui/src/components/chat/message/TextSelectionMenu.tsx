@@ -28,6 +28,7 @@ import {
     useMobileCommentDraft,
 } from '../composer/comment/MobileCommentComposerContext';
 import { rangeToMarkdown, trimSelectionValue, wrapMarkdownSelectionForChat } from './selectionMarkdown';
+import { resolveShadowSelectionRange } from './shadowSelection';
 import { registerActiveSelectionToolbar } from '@/lib/addSelectionToChat';
 import { collectSelectionOverlayRects } from '@/lib/selectionOverlayRects';
 import { frameRectInApp, onFrameSelection } from './frameSelection';
@@ -425,8 +426,11 @@ const TextSelectionMenuImpl: React.FC<TextSelectionMenuProps> = ({ containerRef,
       return;
     }
 
-    // Get selection coordinates
-    const rect = range.getBoundingClientRect();
+    // A selection inside a shadow-rooted widget (a diff in a tool call) reaches
+    // the document as an empty range over the widget's host: measure the
+    // widget's own range, or the menu lands in the top-left corner.
+    const measuredRange = resolveShadowSelectionRange(range, text) ?? range;
+    const rect = measuredRange.getBoundingClientRect();
 
     // Store the selection but don't show menu yet if dragging
     const anchorElement = range.commonAncestorContainer instanceof Element
@@ -438,7 +442,7 @@ const TextSelectionMenuImpl: React.FC<TextSelectionMenuProps> = ({ containerRef,
       markdownText: rangeToMarkdown(range, text),
       rect,
       messageId: anchorElement?.closest('[data-message-id]')?.getAttribute('data-message-id') ?? null,
-      range: range.cloneRange(),
+      range: measuredRange.cloneRange(),
     };
     // The app's selection takes over from one a page frame had.
     replaced?.clear?.();
