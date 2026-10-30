@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * Build a macOS app from upstream main plus a set of your own pull requests.
+ * Build a macOS app from upstream main plus your own open pull requests.
  *
- * Each run rebuilds the integration branch from scratch: fetch upstream main,
- * merge the PRs listed in `prs.txt` in order, then package an unsigned DMG that
- * runs locally. The point is a daily-driver build you can use for a day and
- * catch your own bugs in, not a release.
+ * There is no list to maintain. Each run asks GitHub which PRs you have open,
+ * drops the ones whose commits are already contained in another PR of the set
+ * (a stacked PR), and merges the rest in ascending number order. A markdown
+ * conflict where both sides only insert at the same anchor keeps both sides;
+ * anything else skips that PR and reports it.
  *
  *   node selfbuild/oc-selfbuild.mjs                 # build
- *   node selfbuild/oc-selfbuild.mjs --dry-run       # merge only, list what would build
- *   node selfbuild/oc-selfbuild.mjs --prs 5863,5514 # ad-hoc set instead of prs.txt
+ *   node selfbuild/oc-selfbuild.mjs --dry-run       # merge only, no packaging
+ *   node selfbuild/oc-selfbuild.mjs --prs 5863,5514 # explicit set instead
+ *   node selfbuild/oc-selfbuild.mjs --author you    # whose open PRs to take
  *
  * Nothing is written to your checkout: merges happen in a scratch worktree, and
  * only `git fetch` touches the repository itself.
@@ -34,9 +36,10 @@ function parseArgs(argv) {
         noPackage: false,
         noCheck: false,
         noInstall: false,
-        keep: false,
         prs: null,
+        author: null,
         out: null,
+        repo: null,
     };
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
@@ -49,9 +52,10 @@ function parseArgs(argv) {
         else if (arg === '--no-package') options.noPackage = true;
         else if (arg === '--no-check') options.noCheck = true;
         else if (arg === '--no-install') options.noInstall = true;
-        else if (arg === '--keep') options.keep = true;
         else if (arg === '--prs') options.prs = next();
+        else if (arg === '--author') options.author = next();
         else if (arg === '--out') options.out = next();
+        else if (arg === '--repo') options.repo = next();
         else if (arg === '--help' || arg === '-h') {
             console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
             process.exit(0);
@@ -74,17 +78,32 @@ function run(command, argv, cwd, env = {}) {
     if (result.status !== 0) throw new Error(`${command} ${argv.join(' ')} failed (exit ${result.status})`);
 }
 
+function gh(argv) {
+    const result = spawnSync('gh', argv, { encoding: 'utf8' });
+    if (result.status !== 0) {
+        throw new Error(`gh ${argv.join(' ')} failed: ${(result.stderr || '').trim() || `exit ${result.status}`}`);
+    }
+    return result.stdout;
+}
+
 const repoRoot = git(SCRIPT_DIR, 'rev-parse', '--show-toplevel');
 
 const upstreamRemote = (() => {
     const remotes = git(repoRoot, 'remote').split('\n');
     if (remotes.includes('upstream')) return 'upstream';
-    const originUrl = git(repoRoot, 'remote', 'get-url', 'origin');
-    if (/openchamber\/openchamber(\.git)?$/.test(originUrl)) return 'origin';
+    if (/openchamber\/openchamber(\.git)?$/.test(git(repoRoot, 'remote', 'get-url', 'origin'))) return 'origin';
     throw new Error(
-        `no remote points at openchamber/openchamber (origin is ${originUrl}); `
-        + 'add it as "upstream" or point origin at it',
+        'no remote points at openchamber/openchamber; add it as "upstream" '
+        + '(git remote add upstream https://github.com/openchamber/openchamber.git)',
     );
+})();
+
+const upstreamSlug = (() => {
+    if (args.repo) return args.repo;
+    const url = git(repoRoot, 'remote', 'get-url', upstreamRemote);
+    const match = /github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url);
+    if (!match) throw new Error(`cannot read a GitHub slug out of ${url}`);
+    return `${match[1]}/${match[2]}`;
 })();
 
 const workdir = process.env.OC_SELFBUILD_WORKTREE
@@ -93,37 +112,69 @@ const workdir = process.env.OC_SELFBUILD_WORKTREE
 const outDir = args.out ?? path.join(IS_MAC ? path.join(os.homedir(), 'Downloads') : os.tmpdir(), 'oc-selfbuild');
 const logFile = path.join(IS_MAC ? path.join(os.homedir(), 'Library', 'Logs') : outDir, 'oc-selfbuild.log');
 
-/** `5863` or `5863 union-docs`, one per line; `#` starts a comment. */
-function readPrList() {
-    if (args.prs) {
-        return args.prs
-            .split(',')
-            .map((entry) => entry.trim())
+const author = args.author ?? process.env.SELFBUILD_AUTHOR ?? gh(['api', 'user', '--jq', '.login']).trim();
+
+/** Optional opt-out list: PR numbers, one per line. Absent file means take all. */
+function readSkipList() {
+    const file = path.join(SCRIPT_DIR, 'skip.txt');
+    if (!fs.existsSync(file)) return new Set();
+    return new Set(
+        fs.readFileSync(file, 'utf8')
+            .split('\n')
+            .map((line) => line.replace(/#.*/, '').trim())
             .filter(Boolean)
-            .map((entry) => parsePrEntry(entry));
-    }
-    const file = path.join(SCRIPT_DIR, 'prs.txt');
-    if (!fs.existsSync(file)) throw new Error(`missing ${file}`);
-    return fs.readFileSync(file, 'utf8')
-        .split('\n')
-        .map((line) => line.replace(/#.*/, '').trim())
-        .filter(Boolean)
-        .map((entry) => parsePrEntry(entry));
+            .map((entry) => {
+                if (!/^\d+$/.test(entry)) throw new Error(`bad PR number "${entry}" in skip.txt`);
+                return Number(entry);
+            }),
+    );
 }
 
-function parsePrEntry(entry) {
-    const [number, ...flags] = entry.split(/\s+/);
-    if (!/^\d+$/.test(number)) throw new Error(`bad PR entry "${entry}"`);
-    const unionDocs = flags.includes('union-docs');
-    const unknown = flags.filter((flag) => flag !== 'union-docs');
-    if (unknown.length > 0) throw new Error(`unknown flag(s) ${unknown.join(' ')} on PR #${number}`);
-    return { number: Number(number), unionDocs };
+function listOpenPrs() {
+    const json = gh([
+        'pr', 'list',
+        '--repo', upstreamSlug,
+        '--author', author,
+        '--state', 'open',
+        '--limit', '100',
+        '--json', 'number,title,isDraft,headRefOid',
+    ]);
+    return JSON.parse(json).sort((left, right) => left.number - right.number);
+}
+
+function fetchPrHead(number) {
+    const ref = `refs/selfbuild/pr-${number}`;
+    git(repoRoot, 'fetch', '--quiet', '--force', upstreamRemote, `pull/${number}/head:${ref}`);
+    return git(repoRoot, 'rev-parse', ref);
 }
 
 /**
- * Both sides of a markdown conflict are additive in this repository (a PR
- * appends a paragraph after the same anchor), so keeping both is the merge a
- * human would make. Identical blocks collapse to one.
+ * A stacked PR's commits are already inside another PR of the set, possibly as
+ * rebased copies with different hashes — `git cherry` compares patch ids, so a
+ * rebased stack is recognised where a plain ancestry test is not. Merging both
+ * would duplicate the patch and, worse, produce a recursive-merge conflict.
+ */
+function dropStacked(entries) {
+    const kept = [];
+    for (const entry of entries) {
+        const coveredBy = entries.find((other) => {
+            if (other === entry || other.number < entry.number) return false;
+            const result = spawnSync('git', ['cherry', other.ref, entry.ref], { cwd: repoRoot, encoding: 'utf8' });
+            if (result.status !== 0) return false;
+            const lines = result.stdout.trim().split('\n').filter(Boolean);
+            return lines.every((line) => line.startsWith('-'));
+        });
+        if (coveredBy) log(`#${entry.number} dropped: its commits are already in #${coveredBy.number}`);
+        else kept.push(entry);
+    }
+    return kept;
+}
+
+/**
+ * Both sides of an additive markdown conflict insert at the same anchor, so
+ * keeping both is the merge a human would make. Requires diff3 markers: a hunk
+ * whose base section is empty is purely additive; anything else is a real edit
+ * collision and the caller skips the PR instead of guessing.
  */
 function unionMarkdown(file) {
     const lines = fs.readFileSync(file, 'utf8').split('\n');
@@ -134,15 +185,25 @@ function unionMarkdown(file) {
             continue;
         }
         const ours = [];
+        const base = [];
         const theirs = [];
-        index += 1;
-        while (index < lines.length && !lines[index].startsWith('=======')) ours.push(lines[index++]);
-        index += 1;
-        while (index < lines.length && !lines[index].startsWith('>>>>>>>')) theirs.push(lines[index++]);
+        let section = 'ours';
+        for (index += 1; index < lines.length; index += 1) {
+            const line = lines[index];
+            if (line.startsWith('|||||||')) section = 'base';
+            else if (line.startsWith('=======')) section = 'theirs';
+            else if (line.startsWith('>>>>>>>')) break;
+            else if (section === 'ours') ours.push(line);
+            else if (section === 'base') base.push(line);
+            else theirs.push(line);
+        }
+        if (base.join('\n').trim() !== '') return false;
+        if (ours.join('\n').trim() === '' || theirs.join('\n').trim() === '') return false;
         if (ours.join('\n').trim() === theirs.join('\n').trim()) output.push(...ours);
         else output.push(...ours, '', ...theirs);
     }
     fs.writeFileSync(file, output.join('\n'));
+    return true;
 }
 
 function ensureWorktree(baseRef) {
@@ -151,9 +212,7 @@ function ensureWorktree(baseRef) {
         git(workdir, 'reset', '--hard', '--quiet', baseRef);
         git(workdir, 'clean', '-fdq');
     } else {
-        if (fs.existsSync(workdir)) {
-            throw new Error(`${workdir} exists but is not a git worktree; move it away and re-run`);
-        }
+        if (fs.existsSync(workdir)) throw new Error(`${workdir} exists but is not a git worktree; move it away`);
         fs.mkdirSync(path.dirname(workdir), { recursive: true });
         git(repoRoot, 'worktree', 'add', '--detach', '--quiet', workdir, baseRef);
     }
@@ -161,20 +220,40 @@ function ensureWorktree(baseRef) {
 
 function preflight() {
     if (args.noPackage || args.dryRun) return;
-    const toolchain = spawnSync('xcode-select', ['-p'], { encoding: 'utf8' });
-    if (toolchain.status !== 0) {
+    if (spawnSync('xcode-select', ['-p'], { encoding: 'utf8' }).status !== 0) {
         throw new Error('missing Xcode command line tools (xcode-select -p failed); node-pty cannot be rebuilt without them');
     }
 }
 
-function main() {
-    if (!args.noPackage && !args.dryRun && !IS_MAC) {
-        throw new Error('a DMG needs macOS; pass --no-package to check the merge set from another OS');
+function resolvePrSet() {
+    if (args.prs) {
+        const numbers = args.prs.split(',').map((entry) => entry.trim()).filter(Boolean).map(Number);
+        if (numbers.some((number) => !Number.isInteger(number) || number <= 0)) {
+            throw new Error(`bad --prs value: ${args.prs}`);
+        }
+        log(`explicit set: ${numbers.map((number) => `#${number}`).join(' ')}`);
+        return numbers.map((number) => ({ number, title: '', draft: false }));
     }
 
-    const prs = readPrList();
+    const skip = readSkipList();
+    const open = listOpenPrs().filter((entry) => {
+        if (skip.has(entry.number)) {
+            log(`#${entry.number} skipped: listed in skip.txt`);
+            return false;
+        }
+        return true;
+    });
+    log(`#${author} has ${open.length} open PR(s) on ${upstreamSlug}`);
+    return open.map((entry) => ({ number: entry.number, title: entry.title, draft: entry.isDraft }));
+}
+
+function main() {
+    if (!args.noPackage && !args.dryRun && !IS_MAC) {
+        throw new Error('a DMG needs macOS; pass --dry-run or --no-package to check the merge set elsewhere');
+    }
+
     preflight();
-    log(`repo ${repoRoot} · upstream ${upstreamRemote} · ${prs.length} PR(s)`);
+    const prs = resolvePrSet();
 
     log(`fetching ${upstreamRemote}/main`);
     git(repoRoot, 'fetch', '--quiet', upstreamRemote, 'main');
@@ -182,74 +261,75 @@ function main() {
     const baseSha = git(repoRoot, 'rev-parse', '--short', baseRef);
     const version = JSON.parse(fs.readFileSync(path.join(repoRoot, 'packages/electron/package.json'), 'utf8')).version;
 
+    const entries = prs.map((pr) => {
+        const sha = fetchPrHead(pr.number);
+        return { ...pr, sha, short: sha.slice(0, 10), ref: `refs/selfbuild/pr-${pr.number}` };
+    });
+    const ordered = dropStacked(entries)
+        .sort((left, right) => left.number - right.number);
+
+    if (ordered.length === 0) {
+        log('nothing to merge; upstream alone is the app');
+    }
+
     ensureWorktree(baseRef);
     log(`worktree ${workdir} at ${baseSha}`);
 
     const merged = [];
     const skipped = [];
 
-    for (const pr of prs) {
-        const ref = `refs/selfbuild/pr-${pr.number}`;
-        try {
-            git(repoRoot, 'fetch', '--quiet', '--force', upstreamRemote, `pull/${pr.number}/head:${ref}`);
-        } catch {
-            skipped.push({ pr: pr.number, reason: 'fetch failed (wrong number, or the PR is gone)' });
-            log(`#${pr.number} skipped: cannot fetch pull/${pr.number}/head`);
-            continue;
-        }
-        const sha = git(repoRoot, 'rev-parse', '--short', ref);
-        const subject = git(repoRoot, 'log', '-1', '--format=%s', ref);
-
-        const result = spawnSync('git', ['merge', '--no-ff', '--no-edit', '--quiet', ref], {
+    for (const entry of ordered) {
+        const ref = entry.ref;
+        const result = spawnSync('git', ['-c', 'merge.conflictStyle=diff3', 'merge', '--no-ff', '--no-edit', '--quiet', ref], {
             cwd: workdir,
             encoding: 'utf8',
         });
         if (result.status === 0) {
-            merged.push({ pr: pr.number, sha, subject, unionDocs: [] });
-            log(`#${pr.number} merged (${sha})`);
+            merged.push({ ...entry, unionDocs: [] });
+            log(`#${entry.number} merged (${entry.short}) ${entry.draft ? '[draft] ' : ''}${entry.title}`);
             continue;
         }
+        if (result.status === null) throw new Error(`git merge #${entry.number} could not start`);
 
         const conflicted = git(workdir, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
         const docsOnly = conflicted.length > 0 && conflicted.every((file) => file.endsWith('.md'));
-        if (pr.unionDocs && docsOnly) {
-            for (const file of conflicted) unionMarkdown(path.join(workdir, file));
+        if (docsOnly && conflicted.every((file) => unionMarkdown(path.join(workdir, file)))) {
             git(workdir, 'add', '-A');
             git(workdir, 'commit', '--no-edit', '--quiet');
-            merged.push({ pr: pr.number, sha, subject, unionDocs: conflicted });
-            log(`#${pr.number} merged with both sides kept in: ${conflicted.join(', ')} (review this file)`);
+            merged.push({ ...entry, unionDocs: conflicted });
+            log(`#${entry.number} merged with both sides kept in ${conflicted.join(', ')}`);
             continue;
         }
 
-        if (result.status === null) throw new Error(`git merge #${pr.number} could not start`);
         spawnSync('git', ['merge', '--abort'], { cwd: workdir, stdio: 'ignore' });
-        skipped.push({ pr: pr.number, reason: 'merge conflict', files: conflicted });
-        log(`#${pr.number} skipped: conflict in ${conflicted.join(', ') || '(unknown)'}`);
+        skipped.push({ pr: entry.number, reason: 'merge conflict', files: conflicted, title: entry.title });
+        log(`#${entry.number} skipped: conflict in ${conflicted.join(', ') || '(unknown)'}`);
     }
 
     const headSha = git(workdir, 'rev-parse', '--short', 'HEAD');
+    const signature = ordered.map((entry) => `${entry.number}:${entry.short}`).join(',');
     const report = {
         builtAt: new Date().toISOString(),
+        author,
         base: { ref: baseRef, sha: baseSha },
         version,
         commit: headSha,
-        merged,
-        skipped,
+        signature,
+        open: prs.map((pr) => pr.number),
+        dropped: entries.filter((entry) => !ordered.includes(entry)).map((entry) => ({ pr: entry.number, title: entry.title })),
+        merged: merged.map((entry) => ({ pr: entry.number, title: entry.title, draft: entry.draft, sha: entry.short, unionDocs: entry.unionDocs })),
+        skipped: skipped.map((entry) => ({ pr: entry.pr, title: entry.title, reason: entry.reason, files: entry.files })),
     };
     fs.writeFileSync(path.join(workdir, 'selfbuild-report.json'), `${JSON.stringify(report, null, 2)}\n`);
-
-    if (!args.noCheck) {
-        log('installing dependencies and type-checking');
-        run('bun', ['install', '--frozen-lockfile'], workdir);
-        run('bun', ['run', 'type-check:ui'], workdir);
-    } else {
-        run('bun', ['install', '--frozen-lockfile'], workdir);
-    }
 
     if (args.dryRun) {
         printSummary(report, null);
         return;
     }
+
+    log('installing dependencies and type-checking');
+    run('bun', ['install', '--frozen-lockfile'], workdir);
+    if (!args.noCheck) run('bun', ['run', 'type-check:ui'], workdir);
 
     if (args.noPackage) {
         log('building web assets only (--no-package)');
@@ -277,8 +357,7 @@ function main() {
     fs.copyFileSync(path.join(distDir, produced[0]), artifact);
     fs.writeFileSync(path.join(outDir, 'selfbuild-report.json'), `${JSON.stringify(report, null, 2)}\n`);
 
-    let installed = null;
-    if (!args.noInstall) installed = installApp(artifact, report);
+    const installed = args.noInstall ? null : installApp(artifact, report);
 
     const summary = { artifact, seconds: elapsed, installed };
     fs.appendFileSync(logFile, `${JSON.stringify({ ...report, ...summary })}\n`);
@@ -299,7 +378,6 @@ function installApp(dmgPath, report) {
         }
         fs.rmSync(target, { recursive: true, force: true });
         run('ditto', [path.join(volume, app), target], '/');
-        // The app self-identifies: which PRs this binary was built from.
         fs.writeFileSync(
             path.join(target, 'Contents/Resources/self-build.json'),
             `${JSON.stringify(report, null, 2)}\n`,
@@ -314,9 +392,10 @@ function installApp(dmgPath, report) {
 function printSummary(report, summary) {
     console.log('\n=== selfbuild ===');
     console.log(`base   ${report.base.ref} ${report.base.sha}`);
-    console.log(`commit ${report.commit}  (${
-        report.merged.map((entry) => `#${entry.pr}`).join(' ') || 'no PRs'
-    })`);
+    console.log(`commit ${report.commit}  (${report.merged.map((entry) => `#${entry.pr}`).join(' ') || 'no PRs'})`);
+    if (report.dropped.length > 0) {
+        console.log(`stacked, already contained: ${report.dropped.map((entry) => `#${entry.pr}`).join(' ')}`);
+    }
     if (report.skipped.length > 0) {
         console.log('skipped:');
         for (const entry of report.skipped) {
@@ -333,7 +412,7 @@ function printSummary(report, summary) {
         if (summary.installed) console.log(`app    ${summary.installed}`);
         console.log(`log    ${logFile}`);
     }
-    console.log(`work   ${workdir}${args.keep ? '' : '  (rebuilt next run)'}`);
+    console.log(`work   ${workdir}`);
 }
 
 try {

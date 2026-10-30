@@ -1,20 +1,20 @@
 # selfbuild — 用你自己的 PR 编一个每天能用的 macOS app
 
-把上游 `main` 和你自己的一批 open PR 合成一版 DMG，装上 `/Applications`，日常用它跑，好让你自己提的改动在真实使用里暴露问题。
+把上游 `main` 和你**当前所有 open PR** 合成一版 DMG，装上 `/Applications`，日常用它跑，好让你自己提的改动在真实使用里暴露问题。
 
-不是发版流水线：产物**未签名、未公证**，只在你自己的机器上用。
+没有需要维护的清单：每次运行都去 GitHub 问"我现在开了哪些 PR"。产物**未签名、未公证**，只在你自己的机器上用。
 
 ## 一次性准备（Mac）
 
 ```sh
-git clone git@github.com:gaojunran/openchamber.git ~/code/openchamber   # 或已有 clone
+git clone git@github.com:gaojunran/openchamber.git ~/code/openchamber
 cd ~/code/openchamber
 git remote add upstream https://github.com/openchamber/openchamber.git   # 若还没有
 git fetch upstream fork && git checkout -b selfbuild fork/selfbuild
 bun install
 ```
 
-需要：`bun 1.4.3`、`node >= 24.14`、Xcode Command Line Tools（`xcode-select --install`，`rebuild:native` 要用 clang/python）。
+需要：`bun 1.4.3`、`node >= 24.14`、Xcode Command Line Tools（`xcode-select --install`）、`gh`（已 `gh auth login`，用来列 PR）。
 
 ## 每次构建
 
@@ -24,47 +24,54 @@ node ~/code/openchamber/selfbuild/oc-selfbuild.mjs   # 任意 cwd 都行
 
 它会：
 
-1. `git fetch upstream main`，在你的仓库里建一个临时 worktree（默认 `~/Library/Caches/oc-selfbuild/work`），**你的 checkout 不动**；
-2. 按 `selfbuild/prs.txt` 的顺序 `git merge` 每个 PR（抓 `pull/<N>/head`）；有冲突就跳过并记录，剩下的继续；
-3. 跑 `bun install --frozen-lockfile` + `bun run type-check:ui` 作为编译前的快速门禁；
-4. `CSC_IDENTITY_AUTO_DISCOVERY=false bun run package -- --publish=never`（未签名 DMG）；
-5. 把 DMG 复制到 `~/Downloads/oc-selfbuild/OpenChamber-<version>-self-<sha>.dmg`，挂载并替换 `/Applications/OpenChamber.app`；
-6. 往 `Contents/Resources/self-build.json` 写一份清单（这版含哪些 PR、各自 sha、被跳过的和原因），日志追加到 `~/Library/Logs/oc-selfbuild.log`。
+1. `gh` 列出你（`--author`，默认取 `gh api user`）在上游的所有 open PR，按编号升序；
+2. **自动去掉堆叠 PR**：如果某个 PR 的提交已经（按 patch-id）包含在另一个 PR 里（例如分支是在另一个 PR 上堆的、或 rebase 过），只保留最新的那个 —— `git cherry` 判定，不用人管；
+3. `git fetch upstream main`，在临时 worktree（默认 `~/Library/Caches/oc-selfbuild/work`）里按序 merge，**你的 checkout 不动**；
+4. 冲突时：如果冲突文件全是 markdown、且两侧都是"同一锚点各自新增"（diff3 的 base 段为空），保留双方；否则跳过该 PR 并报告，其余继续；
+5. `bun install --frozen-lockfile` + `bun run type-check:ui` 作为打包前门禁；
+6. `CSC_IDENTITY_AUTO_DISCOVERY=false bun run package -- --publish=never`，未签名 DMG；
+7. 复制到 `~/Downloads/oc-selfbuild/OpenChamber-<version>-self-<sha>.dmg`，挂载替换 `/Applications/OpenChamber.app`，并把清单写进 `Contents/Resources/self-build.json`。
+
+想看手头这个 app 含哪些 PR：`cat /Applications/OpenChamber.app/Contents/Resources/self-build.json`。
 
 ## 选项
 
 | 参数 | 作用 |
 |---|---|
-| `--dry-run` | 只合并 + 类型检查，不打包 |
-| `--no-package` | 合并 + 类型检查 + `build:web-assets`，不打包（非 macOS 上也可跑，用来检查 PR 集是否自洽） |
-| `--prs 5863,5514` | 临时用另一组 PR，忽略 `prs.txt` |
+| `--dry-run` | 只合并，不安装依赖、不打包（非 macOS 也能跑，用来检查 PR 集自洽） |
+| `--no-package` | 合并 + 类型检查 + `build:web-assets`，不打包 |
 | `--no-install` | 不替换 `/Applications`，只出 DMG |
-| `--no-check` | 跳过类型检查（更快，但坏代码要到打包时才炸） |
+| `--no-check` | 跳过类型检查 |
+| `--prs 5863,5514` | 临时用指定集合，忽略自动发现（A/B 用） |
+| `--author <login>` | 换一个作者（默认你自己） |
 | `--out DIR` | 产物目录，默认 `~/Downloads/oc-selfbuild` |
-| `--keep` | 只在摘要里标注保留 worktree（worktree 本来就保留，下次重置） |
 
-环境变量：`OC_SELFBUILD_WORKTREE` 覆盖临时 worktree 路径。
+## 想临时摘掉某个 PR
 
-## 冲突策略
+在 `selfbuild/skip.txt` 里写 PR 号（一行一个，`#` 注释）。文件不存在就是全要。这是**可选项**，日常不用碰。
 
-`prs.txt` 每行 `<PR 号>`，可选 `union-docs`。冲突时：
+## CI（可选，已配好）
 
-- 默认：**跳过这个 PR 并报告**，构建继续；
-- 带 `union-docs`：如果冲突文件**全是 markdown**，两边内容都保留（这个仓库的文档冲突几乎都是"同一锚点后各加一段"），并提示你读一次那个文件；有非 md 冲突就仍然跳过。
+`.github/workflows/selfbuild-dmg.yml` 在 fork 上跑同一条链路：`ubuntu` 上先算"PR 集合 + 各自 head sha"的签名，已存在同名 artifact 就直接跳过；否则 `macos-15` 上合并打包，上传 `selfbuild-<signature>`。
 
-这套策略来自实测：9 个 PR 叠在一起，只有 `#5863` 与 `#5514` 在 `composer/DOCUMENTATION.md` 上撞车，两边都留即可；`#5557` 已包含 `#5548`，所以 `#5548` 不单独列。
+触发：push 任意分支（你给 PR 分支推代码就重建）、每 30 分钟轮询（兜住"新开 PR 但没新 push"）、手动 dispatch。
+
+注意两点：
+
+- workflow 文件在 `selfbuild` 分支上，而 GitHub 只对**默认分支**上的 workflow 启用 `schedule` / `workflow_dispatch` —— 所以 fork 的默认分支被设成了 `selfbuild`（`main` 仍是上游镜像，供你本地同步用）；
+- 从 CI 下回来的 dmg 带 quarantine，装上后跑一次 `xattr -cr /Applications/OpenChamber.app`。
 
 ## 边界
 
-- **未签名**：本机运行没问题（没有 quarantine 属性）；把 DMG 拷给别人会被 Gatekeeper 拦，这不是构建失败。
-- **不含 iOS**：iOS 需要先解决签名（免费 Apple ID 要去掉 `aps-environment` 与 App Groups、换 bundle id），见后续计划。
-- **默认只编 arm64**（Apple Silicon 本位）。Intel Mac 上加 `--config` 参数或改脚本传 `--x64`。
-- 每次都是从零重建集成分支（`self/edge` 的等价物），所以上一版的坏改动不会残留；想 A/B 就把可疑 PR 从 `prs.txt` 里去掉再编一版。
-- `main` 始终是上游镜像；`selfbuild` 分支只放这三个文件，和上游没有交集，更新脚本用 `git checkout selfbuild && git pull --rebase` 即可。
+- **未签名**：本机运行没问题；拷给别人会被 Gatekeeper 拦，这不是构建失败。
+- **不含 iOS**：iOS 需要先解决签名（免费 Apple ID 要去掉 `aps-environment` 与 App Groups、换 bundle id）。
+- **只编 arm64**（Apple Silicon）。
+- 每次从零重建集成分支，上一版的坏改动不会残留；想 A/B 就用 `--prs` 或 `skip.txt`。
+- `main` 始终是上游镜像；`selfbuild` 分支只放这三个文件（脚本、skip.txt、README）加一个 workflow，跟上上游用 `git checkout selfbuild && git pull --rebase`。
 
 ## 排错
 
-- `afterPack` 报 `Resources/ripgrep/rg is missing`：说明绕过了 `bun run package`（`prepare:ripgrep` 没跑）。用本脚本，或手动补跑 `bun run prepare:ripgrep`。
+- `afterPack` 报 `Resources/ripgrep/rg is missing`：说明绕过了 `bun run package`（`prepare:ripgrep` 没跑）。
 - `node-pty` 重编失败：`xcode-select -p` 是否指向完整 CLT；`python3` 是否可用。
-- 替换 `/Applications/OpenChamber.app` 失败：app 还在运行，退出后重跑（或加 `--no-install`）。
-- 想知道手头这个 app 是哪版：`cat /Applications/OpenChamber.app/Contents/Resources/self-build.json`。
+- 替换 `/Applications/OpenChamber.app` 失败：app 还在运行，退出后重跑（或 `--no-install`）。
+- `gh pr list` 报鉴权错误：`gh auth status` / `gh auth login`。
