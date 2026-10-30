@@ -27,6 +27,7 @@ import type {
   Project,
   ProjectUpstream,
   ReadyChangeRequestInput,
+  DraftChangeRequestInput,
   CommentInput,
   DiscussionCloseReason,
   DiscussionCommentInput,
@@ -58,6 +59,7 @@ import type {
   SourceControlMutationContext,
   SourceControlMutationReceipt,
   SourceControlReadyMutationResult,
+  SourceControlDraftMutationResult,
   SourceControlReviewMutationResult,
   SourceControlStateMutationResult,
   SourceControlResolvedMutationTarget,
@@ -187,6 +189,7 @@ interface MutationResultDTO {
   outcome?: string;
   stacked?: boolean;
   ready?: boolean;
+  draft?: boolean;
   commented?: boolean;
   state?: string;
 }
@@ -674,6 +677,13 @@ const parseReadyMutationResult = (result: MutationResultDTO): SourceControlReady
     throw new Error('Source control response contained an invalid ready result');
   }
   return { ready: result.ready };
+};
+
+const parseDraftMutationResult = (result: MutationResultDTO): SourceControlDraftMutationResult => {
+  if (!hasExactKeys(result, ['draft']) || !isBooleanValue(result.draft)) {
+    throw new Error('Source control response contained an invalid draft result');
+  }
+  return { draft: result.draft };
 };
 
 const parseSourceUser = (user: SourceUserDTO, identity: SourceControlIdentity): SourceControlUser => {
@@ -1253,6 +1263,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
         issues: payload.issues,
         changeRequests: payload.changeRequests,
         draftChangeRequests: payload.draftChangeRequests,
+        draftConversion: payload.draftConversion === true,
         mergeChangeRequests: payload.mergeChangeRequests,
         mergeMethods: payload.mergeMethods ? [...payload.mergeMethods] : undefined,
         ci: payload.ci,
@@ -1380,6 +1391,11 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       const identity = normalizeIdentity(payload);
       const result = await post<MutationReceiptDTO>(fetch, identity, '/pr/ready', mutationBody(payload, identity, 'existing'));
       return parseMutationReceipt(result, payload, identity, parseReadyMutationResult);
+    },
+    changeRequestDraft: async (payload: DraftChangeRequestInput) => {
+      const identity = normalizeIdentity(payload);
+      const result = await post<MutationReceiptDTO>(fetch, identity, '/pr/draft', mutationBody(payload, identity, 'existing'));
+      return parseMutationReceipt(result, payload, identity, parseDraftMutationResult);
     },
     changeRequestComment: async (payload: CommentInput) => {
       const identity = normalizeIdentity(payload);
