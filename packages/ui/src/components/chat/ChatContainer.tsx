@@ -4,7 +4,7 @@ import { DraftProjectName } from '@/components/chat/DraftProjectName';
 import { createPortal } from 'react-dom';
 import type { Message, Part, Session } from '@/lib/opencode/model';
 import { getLastConversationRecord, isIncompleteAssistantTurn } from '@/lib/opencode/model';
-import { keepCommandSubagentReports } from '@/lib/opencode/subagent-run';
+import { classifySubagentReports, type SubagentCallInfo } from '@/lib/opencode/subagent-run';
 import { isOpencodeNotFound, opencodeClient } from '@/lib/opencode/client';
 
 import { ChatInput } from './ChatInput';
@@ -26,6 +26,7 @@ import { KeepAlive } from '@/components/ui/KeepAlive';
 import ChatEmptyState from './ChatEmptyState';
 import { useGlobalSyncStore } from '@/sync/global-sync-store';
 import MessageList, { type MessageListHandle } from './MessageList';
+import { SubagentReportNoticesProvider } from './message/subagentReportNotices';
 import { createTimelineRevealGate, type TimelineRevealGate } from './timelineRevealGate';
 
 // How long the previous timeline stays on screen while a session that is not
@@ -231,6 +232,8 @@ type ChatViewportProps = {
     onListMetricsChange: (metrics: { readonly footerSize: number }) => void;
     onTimelineDataChange: () => void;
     renderedMessages: SessionMessageRecord[];
+    /** Reports that read as a completion notice instead of a row of their own. */
+    subagentCompletionNotices: ReadonlyMap<string, SubagentCallInfo>;
     isLoadingOlder: boolean;
     sessionIsWorking: boolean;
     streamingMessageId: string | null;
@@ -282,6 +285,7 @@ const ChatViewport = React.memo(({
     onListMetricsChange,
     onTimelineDataChange,
     renderedMessages,
+    subagentCompletionNotices,
     isLoadingOlder,
     sessionIsWorking,
     streamingMessageId,
@@ -577,29 +581,31 @@ const ChatViewport = React.memo(({
                         capacity={retainedTimelines()}
                     >
                         <ChatColumnSessionContext.Provider value={session}>
-                            <MessageList
-                                key={currentSessionKey}
-                                ref={messageListRef}
-                                sessionKey={currentSessionId}
-                                messages={renderedMessages}
-                                sessionIsWorking={sessionIsWorking}
-                                activeStreamingMessageId={streamingMessageId}
-                                activeStreamingPhase={activeStreamingPhase}
-                                retryOverlay={retryOverlay}
-                                isLoadingOlder={isLoadingOlder}
-                                scrollToBottom={scrollToBottom}
-                                endPinningReleased={endPinningReleased}
-                                directory={directory}
-                                registerList={registerSessionList}
-                                // The footer already reserves the composer's band.
-                                composerOverlayHeight={0}
-                                onIsAtEndChange={onIsAtEndChange}
-                                onListMetricsChange={onListMetricsChange}
-                                onTimelineDataChange={onTimelineDataChange}
-                                listHeader={listHeader}
-                                listFooter={listFooter}
-                                scrollContainerProps={scrollContainerProps}
-                            />
+                            <SubagentReportNoticesProvider value={subagentCompletionNotices}>
+                                <MessageList
+                                    key={currentSessionKey}
+                                    ref={messageListRef}
+                                    sessionKey={currentSessionId}
+                                    messages={renderedMessages}
+                                    sessionIsWorking={sessionIsWorking}
+                                    activeStreamingMessageId={streamingMessageId}
+                                    activeStreamingPhase={activeStreamingPhase}
+                                    retryOverlay={retryOverlay}
+                                    isLoadingOlder={isLoadingOlder}
+                                    scrollToBottom={scrollToBottom}
+                                    endPinningReleased={endPinningReleased}
+                                    directory={directory}
+                                    registerList={registerSessionList}
+                                    // The footer already reserves the composer's band.
+                                    composerOverlayHeight={0}
+                                    onIsAtEndChange={onIsAtEndChange}
+                                    onListMetricsChange={onListMetricsChange}
+                                    onTimelineDataChange={onTimelineDataChange}
+                                    listHeader={listHeader}
+                                    listFooter={listFooter}
+                                    scrollContainerProps={scrollContainerProps}
+                                />
+                            </SubagentReportNoticesProvider>
                         </ChatColumnSessionContext.Provider>
                     </KeepAlive>
                     {/* The transcript's edge fades must follow the scroller. */}
@@ -647,6 +653,7 @@ const ChatViewport = React.memo(({
         && prev.scrollRef === next.scrollRef
         && prev.messageListRef === next.messageListRef
         && prev.renderedMessages === next.renderedMessages
+        && prev.subagentCompletionNotices === next.subagentCompletionNotices
         && prev.isLoadingOlder === next.isLoadingOlder
         && prev.sessionIsWorking === next.sessionIsWorking
         && prev.streamingMessageId === next.streamingMessageId
@@ -1404,14 +1411,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }, []);
 
     // A subagent report opens a turn of its own at the end of the chat only for
-    // a `subagent: true` command; a call's report finishes that call's row
-    // (see `ToolPart`), and a run started before the loaded history stays in
-    // the session's subagent list, so the chat never shifts for either.
+    // a `subagent: true` command; a call's report reads as a compact completion
+    // notice instead, on top of the call's own row (see `TimelineNotice`). A run
+    // started before the loaded history stays in the session's subagent list, so
+    // the chat never shifts for it.
     const sessionStartTimes = useSessionStartTimes(effectiveSessionDirectory);
-    const viewportMessages = React.useMemo(
-        () => keepCommandSubagentReports(sessionMessages, (childSessionID) => sessionStartTimes.get(childSessionID)),
+    const subagentReports = React.useMemo(
+        () => classifySubagentReports(sessionMessages, (childSessionID) => sessionStartTimes.get(childSessionID)),
         [sessionStartTimes, sessionMessages],
     );
+    const viewportMessages = subagentReports.records;
 
     const timelineController = useChatTimelineController({
         sessionId: currentSessionId,
@@ -1861,6 +1870,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             onTimelineDataChange={onTimelineDataChange}
             messageListRef={messageListRef}
             renderedMessages={timelineController.renderedMessages}
+            subagentCompletionNotices={subagentReports.completionNotices}
             isLoadingOlder={timelineController.isLoadingOlder}
             sessionIsWorking={sessionIsWorking}
             streamingMessageId={streamingMessageId}

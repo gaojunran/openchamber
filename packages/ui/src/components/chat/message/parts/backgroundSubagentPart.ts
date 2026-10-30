@@ -5,9 +5,10 @@
  * OpenCode settles such a call at once (see `readBackgroundSubagentChildID`),
  * so its own part says "completed" while the child keeps working. The row
  * instead follows the child: running while the child session runs, then the
- * report OpenCode handed back to the agent. The report itself is not shown as
- * a row of its own (`keepCommandSubagentReports`), so the subagent stays
- * where it was started instead of reappearing at the end of the chat.
+ * report OpenCode handed back to the agent. The report itself draws as a
+ * completion notice where it arrived (`classifySubagentReports`), so the
+ * subagent stays where it was started instead of reappearing at the end of the
+ * chat.
  */
 
 import type { ToolPart } from '@/lib/opencode/model';
