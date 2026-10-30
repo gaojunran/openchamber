@@ -938,6 +938,21 @@ process's last error and stderr tail. The diagnostic timeline
 (Ctrl/Cmd+Shift+L, see `lib/diagnostics/DOCUMENTATION.md`) carries them
 with numbered session labels and the error class only.
 
+A failed turn can be retried from that notice (`retryLastTurn`). The retry
+stages the revert `revertToMessage` would stage — at the user message's context
+carriers — and then sends the stored prompt again: text, file parts, the
+synthetic context carriers and the `@agent` mention. The session's own model,
+agent and variant carry the turn, so it runs where it failed; a session that
+records none of them falls back to the choice stored with its messages, and a
+retry that cannot name one fails before touching the timeline. The send commits
+the staged revert while inserting its optimistic message, so the transcript
+keeps one user message and the failed attempt disappears. Unlike a manual
+revert, the retry neither restores the composer nor marks the revert before
+staging: it marks it only after the stage call, immediately before the send, so
+the restore dock never paints between the two. A turn that merely never answered
+and a turn the user interrupted offer no retry — the first may still be running
+server-side, and the second is not a failure to repeat.
+
 ## Loading diagnostics
 
 Session loading instrumentation is disabled by default. Set `localStorage.openchamber_session_load_perf` to `"1"`, reproduce the interaction, then inspect `window.__openchamberSessionLoadPerformance.events`.

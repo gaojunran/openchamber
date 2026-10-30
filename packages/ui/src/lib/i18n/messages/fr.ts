@@ -1836,6 +1836,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'Afficher la chronologie des diagnostics',
   'chat.sessionError.noReply': 'OpenCode n\'a pas commencé de réponse à ce message.',
   'chat.sessionError.interrupted': 'OpenCode a interrompu cette réponse.',
+  'chat.sessionError.retry': 'Réessayer',
+  'chat.sessionError.retryFailed': 'Impossible de relancer ce tour.',
   'chat.longError.expand': 'Afficher l’erreur complète',
   'chat.longError.collapse': 'Afficher moins',
   'chat.errorDetails.show': 'Afficher les détails de la réponse',

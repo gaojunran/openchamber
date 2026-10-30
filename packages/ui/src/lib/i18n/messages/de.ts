@@ -1823,6 +1823,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'Diagnoseverlauf anzeigen',
   'chat.sessionError.noReply': 'OpenCode hat keine Antwort auf diese Nachricht begonnen.',
   'chat.sessionError.interrupted': 'OpenCode hat diese Antwort unterbrochen.',
+  'chat.sessionError.retry': 'Erneut versuchen',
+  'chat.sessionError.retryFailed': 'Dieser Durchlauf konnte nicht wiederholt werden.',
   'chat.longError.expand': 'Vollständigen Fehler anzeigen',
   'chat.longError.collapse': 'Weniger anzeigen',
   'chat.errorDetails.show': 'Antwortdetails anzeigen',

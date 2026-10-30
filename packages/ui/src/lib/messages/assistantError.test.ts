@@ -57,28 +57,28 @@ describe('assistantErrorNotice', () => {
     // with error: Step interrupted" even though the message was delivered and
     // the user stopped the step on purpose.
     const notice = assistantErrorNotice(assistant({ type: 'MessageAbortedError', message: 'Step interrupted' }));
-    expect(notice).toEqual({ text: STOPPED_TURN_MESSAGE });
+    expect(notice).toEqual({ text: STOPPED_TURN_MESSAGE, retryable: false });
     expect(notice?.text).not.toContain('failed to send');
   });
 
   test('keeps the stop sentence for the local close this client writes', () => {
     expect(assistantErrorNotice(assistant({ type: 'aborted', message: 'aborted' })))
-      .toEqual({ text: STOPPED_TURN_MESSAGE });
+      .toEqual({ text: STOPPED_TURN_MESSAGE, retryable: false });
   });
 
-  test('still names a real failure as one', () => {
+  test('still names a real failure as one, and offers to run it again', () => {
     expect(assistantErrorNotice(assistant({ type: 'UnknownError', message: 'Model unavailable' })))
-      .toEqual({ text: 'Opencode failed to send message with error: Model unavailable' });
+      .toEqual({ text: 'Opencode failed to send message with error: Model unavailable', retryable: true });
   });
 
   test('keeps the retry notice ahead of the stop classification', () => {
     expect(assistantErrorNotice(assistant({ type: 'SessionRetry', message: 'Retrying in 5s' })))
-      .toEqual({ text: 'Opencode failed to send a message. Retry attempt info: Retrying in 5s' });
+      .toEqual({ text: 'Opencode failed to send a message. Retry attempt info: Retrying in 5s', retryable: true });
   });
 
   test('names an authentication failure the way the rest of the product does', () => {
     expect(assistantErrorNotice(assistant({ type: 'ProviderAuthError', message: 'invalid token' })))
-      .toEqual({ text: 'Authentication failed for this provider. Please re-authenticate and retry.' });
+      .toEqual({ text: 'Authentication failed for this provider. Please re-authenticate and retry.', retryable: true });
   });
 
   test('shows nothing for a message without an error', () => {

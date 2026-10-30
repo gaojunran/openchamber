@@ -2087,6 +2087,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'Show diagnostic timeline',
   'chat.sessionError.noReply': 'OpenCode did not start a reply to this message.',
   'chat.sessionError.interrupted': 'OpenCode interrupted this reply.',
+  'chat.sessionError.retry': 'Retry',
+  'chat.sessionError.retryFailed': 'Could not retry this turn.',
   'chat.longError.expand': 'Show full error',
   'chat.longError.collapse': 'Show less',
   'chat.errorDetails.show': 'Show response details',

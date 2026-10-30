@@ -2087,6 +2087,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'Diagnostische tijdlijn tonen',
   'chat.sessionError.noReply': 'OpenCode is geen antwoord op dit bericht begonnen.',
   'chat.sessionError.interrupted': 'OpenCode heeft dit antwoord onderbroken.',
+  'chat.sessionError.retry': 'Opnieuw proberen',
+  'chat.sessionError.retryFailed': 'Deze beurt kon niet opnieuw worden geprobeerd.',
   'chat.longError.expand': 'Volledige fout tonen',
   'chat.longError.collapse': 'Minder tonen',
   'chat.errorDetails.show': 'Antwoorddetails tonen',

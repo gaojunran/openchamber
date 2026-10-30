@@ -2056,6 +2056,8 @@ export const dict: Record<I18nKey, string> = {
   "chat.sessionError.showStatus": "Mostrar cronología de diagnósticos",
   "chat.sessionError.noReply": "OpenCode no comenzó una respuesta a este mensaje.",
   "chat.sessionError.interrupted": 'OpenCode interrumpió esta respuesta.',
+  "chat.sessionError.retry": "Reintentar",
+  "chat.sessionError.retryFailed": "No se pudo reintentar este turno.",
   'chat.longError.expand': 'Mostrar el error completo',
   'chat.longError.collapse': 'Mostrar menos',
   "chat.errorDetails.show": "Mostrar detalles de la respuesta",

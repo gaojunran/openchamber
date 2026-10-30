@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test"
 import type { PermissionRequest } from "@/types/permission"
+import type { ContextPartMetadata, ContextPartPayload } from "@/lib/messages/contextParts"
 import type { FormRequest } from "@/lib/opencode/model"
 import type { InputState } from "./input-store"
 
@@ -189,8 +190,13 @@ type RecordedSend = {
   providerID: string
   modelID: string
   agent?: string
+  attachments?: Array<{ dataUrl: string; mimeType: string; filename: string }>
+  agentMentionName?: string
+  additionalParts?: Array<{ text: string; synthetic?: boolean; metadata?: ContextPartMetadata }>
   variant?: string | null
+  inputMode?: string
   queuedGoal?: null
+  userInitiated?: boolean
   target?: { runtimeKey: string; sessionId: string; directory: string }
 }
 const sendMessageCalls: RecordedSend[] = []
@@ -218,19 +224,35 @@ mock.module("./session-ui-store", () => ({
         providerID: string,
         modelID: string,
         agent?: string,
-        attachments?: void,
-        agentMentionName?: void,
-        additionalParts?: void,
+        attachments?: Array<{ dataUrl: string; mimeType: string; filename: string }>,
+        agentMentionName?: string,
+        additionalParts?: Array<{ text: string; synthetic?: boolean; metadata?: ContextPartMetadata }>,
         variant?: string | null,
-        inputMode?: void,
+        inputMode?: string,
         options?: { userInitiated?: boolean; queuedGoal?: null; target?: { runtimeKey: string; sessionId: string; directory: string } },
       ) => {
-        sendMessageCalls.push({ content, providerID, modelID, agent, variant, queuedGoal: options?.queuedGoal, target: options?.target })
+        sendMessageCalls.push({
+          content,
+          providerID,
+          modelID,
+          agent,
+          attachments,
+          agentMentionName,
+          additionalParts,
+          variant,
+          inputMode,
+          queuedGoal: options?.queuedGoal,
+          userInitiated: options?.userInitiated,
+          target: options?.target,
+        })
         await sendMessageBehavior()
       },
+      getLastUserChoice: () => lastUserChoice,
     }),
   },
 }))
+
+let lastUserChoice: { agent?: string; providerID?: string; modelID?: string; variant?: string } | null = null
 
 // Mock useSelectionStore (the model fallback for a recovered answer)
 mock.module("./selection-store", () => ({
@@ -278,6 +300,17 @@ const inputState: Pick<InputState,
 }
 
 mock.module("./input-store", () => ({
+  // The real store builds an attachment from a message file part; a retry in
+  // this suite only needs to see what the send was given.
+  restoredAttachmentFrom: ({ url, mimeType, filename }: { url: string; mimeType: string; filename: string }) => ({
+    id: url,
+    file: new File([], filename, { type: mimeType }),
+    dataUrl: url,
+    mimeType,
+    filename,
+    size: 0,
+    source: "server",
+  }),
   useInputStore: {
     getState: () => inputState,
     setState: (patch: Partial<typeof inputState>) => Object.assign(inputState, patch),
@@ -297,8 +330,10 @@ mock.module("@/stores/useInlineCommentDraftStore", () => ({
 
 mock.module("@/lib/messages/contextParts", () => ({
   draftFromContextPayload: () => null,
-  readContextPart: () => null,
+  readContextPart: () => readContextResult,
+  createContextPart: (context: ContextPartPayload, text: string) => ({ text, metadata: { openchamberContext: context } }),
 }))
+let readContextResult: ContextPartPayload | null = null
 
 mock.module("@/stores/useGlobalSessionsStore", () => ({
   resolveGlobalSessionDirectory: (session: SessionWithDirectory) => session.directory ?? session.project?.worktree ?? null,
@@ -3105,6 +3140,152 @@ describe("revertToMessage passes session directory", () => {
   })
 })
 
+describe("retryLastTurn", () => {
+  beforeEach(() => {
+    replyCalls.length = 0
+    sessionRecords.clear()
+    sessionMessageRecords.clear()
+    sendMessageCalls.length = 0
+    failingRevertSessionIds.clear()
+    sendMessageBehavior = async () => {}
+    lastUserChoice = null
+    readContextResult = null
+    Object.assign(inputState, {
+      pendingSessionRestores: new Map(),
+      attachedFiles: [],
+    })
+  })
+
+  const sessionWithModel = (): Session => {
+    const session: Session = {
+      ...sessionFixture("session-a"),
+      model: { providerID: "anthropic", id: "claude-sonnet", variant: "high" },
+      agent: "build",
+    }
+    sessionRecords.set(session.id, session)
+    return session
+  }
+
+  test("takes the failed turn back and sends the same prompt again", async () => {
+    const session = sessionWithModel()
+    const quote = { kind: "chat-quote", quote: "quoted selection", text: "quoted selection" } as const
+    readContextResult = quote
+    const store = createStore({}, {
+      session: [session],
+      message: {
+        "session-a": [
+          {
+            id: "msg_ctx",
+            sessionID: "session-a",
+            role: "synthetic",
+            time: { created: 1 },
+            text: "quoted selection",
+            metadata: { openchamberContext: quote },
+          },
+          { id: "msg_1", sessionID: "session-a", role: "user", time: { created: 2 } },
+          {
+            id: "msg_2",
+            sessionID: "session-a",
+            role: "assistant",
+            time: { created: 3 },
+            agent: "build",
+            providerID: "anthropic",
+            modelID: "claude-sonnet",
+            finish: "error",
+          },
+        ],
+      },
+      part: {
+        msg_1: [
+          { id: "p1", sessionID: "session-a", messageID: "msg_1", type: "text", text: "fix the failing test" },
+          { id: "p2", sessionID: "session-a", messageID: "msg_1", type: "file", url: "data:text/plain;base64,aGk=", mime: "text/plain", filename: "notes.txt" },
+          { id: "p3", sessionID: "session-a", messageID: "msg_1", type: "agent", name: "review" },
+        ],
+      },
+      session_status: { "session-a": { type: "idle" } },
+    })
+    const { setActionRefs, retryLastTurn } = await import("./session-actions")
+    setActionRefs(createChildStores([["/test/project", store]]), () => "/test/project")
+
+    await retryLastTurn("session-a")
+
+    expect(replyCalls.filter((call) => call.method === "session.revert.stage").map((call) => call.params)).toEqual([
+      { sessionID: "session-a", messageID: "msg_ctx", directory: "/test/project" },
+    ])
+    expect(sendMessageCalls).toHaveLength(1)
+    expect(sendMessageCalls[0]).toMatchObject({
+      content: "fix the failing test",
+      providerID: "anthropic",
+      modelID: "claude-sonnet",
+      agent: "build",
+      agentMentionName: "review",
+      additionalParts: [{ text: "quoted selection", synthetic: true, metadata: { openchamberContext: quote } }],
+      variant: "high",
+      inputMode: "normal",
+      userInitiated: true,
+    })
+    // The retry sends what it took back: nothing lands in the composer.
+    expect(sendMessageCalls[0]?.attachments?.map((file) => [file.filename, file.mimeType, file.dataUrl])).toEqual([
+      ["notes.txt", "text/plain", "data:text/plain;base64,aGk="],
+    ])
+    expect(inputState.pendingSessionRestores.size).toBe(0)
+    expect(inputState.attachedFiles).toHaveLength(0)
+  })
+
+  test("falls back to the last recorded model when the session carries none", async () => {
+    const session = sessionFixture("session-a")
+    sessionRecords.set(session.id, session)
+    lastUserChoice = { providerID: "openai", modelID: "gpt-5", agent: "ask" }
+    const store = createStore({}, {
+      session: [session],
+      message: { "session-a": [{ id: "msg_1", sessionID: "session-a", role: "user", time: { created: 1 } }] },
+      part: { msg_1: [{ id: "p1", sessionID: "session-a", messageID: "msg_1", type: "text", text: "again" }] },
+    })
+    const { setActionRefs, retryLastTurn } = await import("./session-actions")
+    setActionRefs(createChildStores([["/test/project", store]]), () => "/test/project")
+
+    await retryLastTurn("session-a")
+
+    expect(sendMessageCalls[0]?.providerID).toBe("openai")
+    expect(sendMessageCalls[0]?.modelID).toBe("gpt-5")
+    expect(sendMessageCalls[0]?.agent).toBe("ask")
+  })
+
+  test("refuses without a model selection and leaves the session alone", async () => {
+    const session = sessionFixture("session-a")
+    sessionRecords.set(session.id, session)
+    const store = createStore({}, {
+      session: [session],
+      message: { "session-a": [{ id: "msg_1", sessionID: "session-a", role: "user", time: { created: 1 } }] },
+      part: { msg_1: [{ id: "p1", sessionID: "session-a", messageID: "msg_1", type: "text", text: "again" }] },
+    })
+    const { setActionRefs, retryLastTurn } = await import("./session-actions")
+    setActionRefs(createChildStores([["/test/project", store]]), () => "/test/project")
+
+    await expect(retryLastTurn("session-a")).rejects.toThrow("model selection")
+
+    expect(replyCalls.some((call) => call.method === "session.revert.stage")).toBe(false)
+    expect(sendMessageCalls).toHaveLength(0)
+    expect(store.getState().session[0]?.revert).toBeUndefined()
+  })
+
+  test("a second click while the first is running sends once", async () => {
+    const session = sessionWithModel()
+    const store = createStore({}, {
+      session: [session],
+      message: { "session-a": [{ id: "msg_1", sessionID: "session-a", role: "user", time: { created: 1 } }] },
+      part: { msg_1: [{ id: "p1", sessionID: "session-a", messageID: "msg_1", type: "text", text: "again" }] },
+    })
+    const { setActionRefs, retryLastTurn } = await import("./session-actions")
+    setActionRefs(createChildStores([["/test/project", store]]), () => "/test/project")
+
+    await Promise.all([retryLastTurn("session-a"), retryLastTurn("session-a")])
+
+    expect(sendMessageCalls).toHaveLength(1)
+    expect(replyCalls.filter((call) => call.method === "session.revert.stage")).toHaveLength(1)
+  })
+})
+
 describe("revertToMessage paged message lookup", () => {
   beforeEach(() => {
     replyCalls.length = 0
@@ -3938,6 +4119,8 @@ describe("sendRecoveredFormAnswer", () => {
       modelID: "mod",
       agent: "build",
       variant: "think",
+      inputMode: "normal",
+      userInitiated: true,
       queuedGoal: null,
       target: { runtimeKey: "default-runtime", sessionId: "session-a", directory: "/test/project" },
     }])

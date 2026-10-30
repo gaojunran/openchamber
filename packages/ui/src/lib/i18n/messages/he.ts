@@ -2016,6 +2016,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'הצג ציר זמן אבחון',
   'chat.sessionError.noReply': 'OpenCode לא התחיל תגובה להודעה הזו.',
   'chat.sessionError.interrupted': 'OpenCode קטע את התגובה הזו.',
+  'chat.sessionError.retry': 'נסה שוב',
+  'chat.sessionError.retryFailed': 'לא ניתן היה לנסות שוב את התור הזה.',
   'chat.longError.expand': 'הצג את השגיאה המלאה',
   'chat.longError.collapse': 'הצג פחות',
   'chat.errorDetails.show': 'הצג את פרטי התגובה',

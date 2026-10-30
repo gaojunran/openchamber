@@ -2053,6 +2053,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': '显示诊断时间线',
   'chat.sessionError.noReply': 'OpenCode 没有开始回复这条消息。',
   'chat.sessionError.interrupted': 'OpenCode 中断了此回复。',
+  'chat.sessionError.retry': '重试',
+  'chat.sessionError.retryFailed': '无法重试本轮回复。',
   'chat.longError.expand': '显示完整错误',
   'chat.longError.collapse': '收起',
   'chat.errorDetails.show': '显示响应详情',

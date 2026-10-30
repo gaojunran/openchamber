@@ -1953,6 +1953,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'Tanılama zaman çizelgesini göster',
   'chat.sessionError.noReply': 'OpenCode bu mesaja yanıt vermeye başlamadı.',
   'chat.sessionError.interrupted': 'OpenCode bu yanıtı kesti.',
+  'chat.sessionError.retry': 'Yeniden dene',
+  'chat.sessionError.retryFailed': 'Bu tur yeniden denenemedi.',
   'chat.longError.expand': 'Hatanın tamamını göster',
   'chat.longError.collapse': 'Daha az göster',
   'chat.errorDetails.show': 'Yanıt ayrıntılarını göster',

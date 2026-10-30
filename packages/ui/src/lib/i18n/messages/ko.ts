@@ -2087,6 +2087,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': '진단 타임라인 표시',
   'chat.sessionError.noReply': 'OpenCode가 이 메시지에 대한 응답을 시작하지 않았습니다.',
   'chat.sessionError.interrupted': 'OpenCode가 이 응답을 중단했습니다.',
+  'chat.sessionError.retry': '다시 시도',
+  'chat.sessionError.retryFailed': '이 턴을 다시 시도할 수 없습니다.',
   'chat.longError.expand': '전체 오류 보기',
   'chat.longError.collapse': '간략히 보기',
   'chat.errorDetails.show': '응답 세부 정보 표시',

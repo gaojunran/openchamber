@@ -19,7 +19,7 @@ import {
   type RecoveredQuestion,
 } from "./recoverable-questions"
 import { resolveSendSelection } from "./session-selection"
-import { useInputStore } from "./input-store"
+import { restoredAttachmentFrom, useInputStore } from "./input-store"
 import type { ChildStoreManager } from "./child-store"
 import { computeSubtreeIds } from "./scoped-blocking-requests"
 import { withUserWorkTitle } from "@/lib/sessionWorkTitle"
@@ -35,7 +35,7 @@ import { waitForOpenCodeStartup } from "./opencode-startup-gate"
 import { registerSessionDirectory } from "./sync-refs"
 import { useGlobalSessionStatusStore } from "./global-session-status"
 import { recordSendFailure } from "./send-failure-log"
-import { draftFromContextPayload, readContextPart, type ContextCarrierPart } from "@/lib/messages/contextParts"
+import { createContextPart, draftFromContextPayload, readContextPart, type ContextCarrierPart } from "@/lib/messages/contextParts"
 import { useInlineCommentDraftStore, type InlineCommentDraftTarget } from "@/stores/useInlineCommentDraftStore"
 import { materializeSessionSnapshots } from "./materialization"
 import { sessionEvents } from "@/lib/sessionEvents"
@@ -764,16 +764,25 @@ function restoreFilePartsToInput(fileParts: readonly FilePart[], target: ChatDra
  *
  * OpenCode 2.x admits attached context as synthetic messages inserted right
  * before the prompt, so the carriers are the contiguous run of synthetic
- * messages preceding the target — not parts of the message itself.
+ * messages preceding the target — not parts of the message itself. The text is
+ * kept beside the part: a revert rebuilds the draft from the part, while a
+ * retry re-sends the carrier as it was.
  */
-function contextCarriersForMessage(messages: readonly Message[], messageID: string): ContextCarrierPart[] {
+type MessageContextCarrier = {
+  /** The model-facing text the context was sent as. */
+  text: string
+  /** Carries the structured payload, for reading it back. */
+  part: ContextCarrierPart
+}
+
+function contextCarriersForMessage(messages: readonly Message[], messageID: string): MessageContextCarrier[] {
   const index = messages.findIndex((message) => message.id === messageID)
   if (index < 0) return []
-  const carriers: ContextCarrierPart[] = []
+  const carriers: MessageContextCarrier[] = []
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     const candidate = messages[cursor]
     if (candidate.role !== "synthetic") break
-    carriers.unshift({ metadata: candidate.metadata })
+    carriers.unshift({ text: candidate.text, part: { metadata: candidate.metadata } })
   }
   return carriers
 }
@@ -2710,15 +2719,36 @@ export async function dismissOpenFormsForSession(sessionId: string): Promise<boo
 // ---------------------------------------------------------------------------
 
 /**
- * Revert to a specific user message.
+ * Retries of one session cannot overlap: a second revert would take back the
+ * prompt the first retry just sent, and the transcript would show the message
+ * twice.
+ */
+const retriesInFlight = new Set<string>()
+
+type RevertedMessage = {
+  /** The prompt text; empty when the target is not a user message. */
+  text: string
+  fileParts: readonly FilePart[]
+  contextCarriers: readonly MessageContextCarrier[]
+  /** The `@agent` mention the prompt routed through, if it had one. */
+  agentMentionName?: string
+}
+
+/**
+ * Take back a specific message. `restoreInput` puts the prompt back on the
+ * composer; a retry sends the returned content itself instead.
  *
  * 1. Abort if session is busy
- * 2. Extract text from the target message for prompt restoration
+ * 2. Extract text, files, context and the agent mention from the target message
  * 3. Optimistically set revert marker so messages hide immediately
  * 4. Call the runtime revert endpoint and merge returned session
- * 5. Set pendingInputText so the reverted message text appears in the input
+ * 5. Restore the prompt to the input when asked
  */
-export async function revertToMessage(sessionId: string, messageId: string): Promise<void> {
+async function revertSessionMessage(
+  sessionId: string,
+  messageId: string,
+  restoreInput: boolean,
+): Promise<RevertedMessage> {
   const { store, directory } = dirStoreForSession(sessionId)
   const state = store.getState()
 
@@ -2741,8 +2771,9 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
   const messages = state.message[sessionId] ?? []
   const targetMsg = messages.find((m) => m.id === messageId)
   let messageText = ""
-  let submittedFileParts: FilePart[] = []
-  let submittedContextParts: readonly ContextCarrierPart[] = []
+  let submittedFileParts: readonly FilePart[] = []
+  let submittedContextParts: readonly MessageContextCarrier[] = []
+  let agentMentionName: string | undefined
   if (targetMsg && targetMsg.role === "user") {
     const parts = state.part[messageId] ?? []
     // Every part on a user message is the user's own: OpenCode 2.x delivers
@@ -2754,6 +2785,10 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
       .trim()
     // Snapshot file parts for later restoration to the input.
     submittedFileParts = parts.filter((part): part is FilePart => part.type === "file")
+    // A retried prompt keeps the agent mention it was routed through.
+    agentMentionName = parts
+      .find((part): part is Extract<Part, { type: "agent" }> => part.type === "agent")
+      ?.name
     // Attached context (review comments, quotes, terminal selections) rides in
     // the synthetic messages before this one and belongs back on the chips.
     submittedContextParts = contextCarriersForMessage(messages, messageId)
@@ -2765,37 +2800,51 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
   // session.revert. This matches the server model and preserves reverted
   // messages for the restore dock without maintaining a separate shadow copy.
   const prevRevert = state.session.find((candidate) => candidate.id === sessionId)?.revert
-  const sessions = [...state.session]
-  const sessionIdx = sessions.findIndex((s) => s.id === sessionId)
-
-  if (sessionIdx >= 0) {
+  const markRevert = () => {
+    const current = store.getState()
+    const sessions = [...current.session]
+    const sessionIdx = sessions.findIndex((s) => s.id === sessionId)
+    if (sessionIdx < 0) return
     sessions[sessionIdx] = { ...sessions[sessionIdx], revert: { messageID: revertMessageID } }
     store.setState({ session: sessions })
   }
 
+  // A manual revert hides the messages at once: the restore dock it leaves
+  // behind is the point of the action. A retry only needs the marker for the
+  // send that follows it, so it stages first and marks afterwards (below).
+  if (restoreInput) markRevert()
+
   // Save input store state before mutations — if the API fails we need to
   // roll back both text and attachments to their previous values.
-  const prevRestoreText = useInputStore.getState().pendingSessionRestores.get(sessionId) ?? null
-  const draftTarget: InlineCommentDraftTarget | null = directory
+  const prevRestoreText = restoreInput
+    ? useInputStore.getState().pendingSessionRestores.get(sessionId) ?? null
+    : null
+  const draftTarget: InlineCommentDraftTarget | null = restoreInput && directory
     ? { directory, sessionKey: sessionId }
     : null
   const restoreIdentity = createChatDraftIdentity(getRuntimeKey(), directory, sessionId)
-  const prevTargetAttachments = useInputStore.getState().getAttachedFiles(restoreIdentity)
+  const prevTargetAttachments = restoreInput
+    ? useInputStore.getState().getAttachedFiles(restoreIdentity)
+    : []
   const prevDrafts = draftTarget ? useInlineCommentDraftStore.getState().getDrafts(draftTarget) : []
 
-  // Restore reverted message text and file attachments to input
-  if (messageText) {
-    useInputStore.getState().setPendingSessionRestore(sessionId, messageText)
-  }
+  if (restoreInput) {
+    // Restore reverted message text and file attachments to input
+    if (messageText) {
+      useInputStore.getState().setPendingSessionRestore(sessionId, messageText)
+    }
 
-  // Restore file/image attachments from the target message.
-  // Clear existing attachments first — previous revert's attachments
-  // must not carry over, even when the current message has no files.
-  // Only a prompt goes back to the composer: reverting a subagent run report
-  // leaves whatever the user is typing alone.
-  if (targetMsg?.role === "user") {
-    restoreFilePartsToInput(submittedFileParts, restoreIdentity)
-    if (draftTarget) restoreContextPartsToInput(submittedContextParts, draftTarget)
+    // Restore file/image attachments from the target message.
+    // Clear existing attachments first — previous revert's attachments
+    // must not carry over, even when the current message has no files.
+    // Only a prompt goes back to the composer: reverting a subagent run report
+    // leaves whatever the user is typing alone.
+    if (targetMsg?.role === "user") {
+      restoreFilePartsToInput(submittedFileParts, restoreIdentity)
+      if (draftTarget) {
+        restoreContextPartsToInput(submittedContextParts.map((carrier) => carrier.part), draftTarget)
+      }
+    }
   }
 
   // Call SDK and merge authoritative result into store
@@ -2806,37 +2855,118 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
     // Stage only: the messages disappear behind the revert marker while the
     // dock offers Commit (finalize) or Clear (bring them back).
     await opencodeClient.stageRevert(sessionId, revertMessageID, { directory })
-    const revertedSession = await opencodeClient.getSession(sessionId, directory)
-    const current = store.getState()
-    const updated = [...current.session]
-    const idx = updated.findIndex((s) => s.id === sessionId)
-    if (idx >= 0) {
-      updated[idx] = revertedSession
-      store.setState({ session: updated })
+    if (restoreInput) {
+      const revertedSession = await opencodeClient.getSession(sessionId, directory)
+      const current = store.getState()
+      const updated = [...current.session]
+      const idx = updated.findIndex((s) => s.id === sessionId)
+      if (idx >= 0) {
+        updated[idx] = revertedSession
+        store.setState({ session: updated })
+      }
+    } else {
+      // The resend follows in this same task, and takes the marker over when it
+      // inserts its optimistic message: nothing between here and there waits on
+      // a network round trip, so the restore dock never paints.
+      markRevert()
     }
     if (directory) {
       sessionEvents.requestGitRefresh({ directory })
       fileTreeChanges.unknownChange(directory)
     }
   } catch (err) {
-    // Rollback: restore removed messages + revert marker
-    const current = store.getState()
-    const rollback = [...current.session]
-    const idx = rollback.findIndex((s) => s.id === sessionId)
-    if (idx >= 0) {
-      rollback[idx] = { ...rollback[idx], revert: prevRevert }
-    }
-    store.setState({
-      session: rollback,
-    })
-    // Rollback input store: only this session's attachment slot moves.
-    useInputStore.getState().setPendingSessionRestore(sessionId, prevRestoreText)
-    useInputStore.getState().setAttachedFiles(prevTargetAttachments, restoreIdentity)
-    if (draftTarget) {
-      useInlineCommentDraftStore.getState().clearDrafts(draftTarget)
-      useInlineCommentDraftStore.getState().restoreDrafts(draftTarget, prevDrafts)
+    if (restoreInput) {
+      // Rollback: restore removed messages + revert marker
+      const current = store.getState()
+      const rollback = [...current.session]
+      const idx = rollback.findIndex((s) => s.id === sessionId)
+      if (idx >= 0) {
+        rollback[idx] = { ...rollback[idx], revert: prevRevert }
+      }
+      store.setState({
+        session: rollback,
+      })
+      // Rollback input store: only this session's attachment slot moves.
+      useInputStore.getState().setPendingSessionRestore(sessionId, prevRestoreText)
+      useInputStore.getState().setAttachedFiles(prevTargetAttachments, restoreIdentity)
+      if (draftTarget) {
+        useInlineCommentDraftStore.getState().clearDrafts(draftTarget)
+        useInlineCommentDraftStore.getState().restoreDrafts(draftTarget, prevDrafts)
+      }
     }
     throw err
+  }
+
+  return {
+    text: messageText,
+    fileParts: submittedFileParts,
+    contextCarriers: submittedContextParts,
+    agentMentionName,
+  }
+}
+
+export async function revertToMessage(sessionId: string, messageId: string): Promise<void> {
+  await revertSessionMessage(sessionId, messageId, true)
+}
+
+/**
+ * Retry the turn that failed: take back its prompt and send it again.
+ *
+ * This is the Revert action followed by the send it would take, without the
+ * stop in the input: the stored message's text, files, attached context and
+ * agent mention go straight back out. The session's own model, agent and
+ * thinking level are used, so the turn runs exactly where it failed.
+ * `sendMessage` commits a staged revert as part of its optimistic insert, so
+ * the transcript keeps one user message and the failed attempt disappears.
+ */
+export async function retryLastTurn(sessionId: string): Promise<void> {
+  if (retriesInFlight.has(sessionId)) return
+  retriesInFlight.add(sessionId)
+  try {
+    const { store, directory } = dirStoreForSession(sessionId)
+    const messages = store.getState().message[sessionId] ?? []
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")
+    if (!lastUserMessage) throw new Error("Cannot retry a turn that has no user message")
+
+    const session = store.getState().session.find((candidate) => candidate.id === sessionId)
+    // The session record is what OpenCode runs the next turn on. A session that
+    // never recorded one (the failure landed before the prompt did) falls back
+    // to the choice stored with its messages. A retry that cannot say which
+    // model to use fails here, before the timeline is touched.
+    const lastChoice = useSessionUIStore.getState().getLastUserChoice(sessionId)
+    const providerID = session?.model?.providerID ?? lastChoice?.providerID
+    const modelID = session?.model?.id ?? lastChoice?.modelID
+    if (!providerID || !modelID) throw new Error("Cannot retry a turn without a model selection")
+
+    const prompt = await revertSessionMessage(sessionId, lastUserMessage.id, false)
+
+    // Attached context goes back out as the synthetic parts it was sent as.
+    // The payload is re-read rather than passed through, so the part carries
+    // the same structured metadata the timeline renders a context block from.
+    const additionalParts = prompt.contextCarriers.flatMap(({ text, part }) => {
+      const context = readContextPart(part)
+      return context
+        ? [{ ...createContextPart(context, text), synthetic: true }]
+        : [{ text, synthetic: true }]
+    })
+    const attachments = prompt.fileParts.flatMap((part) => part.url
+      ? [restoredAttachmentFrom({ url: part.url, mimeType: part.mime, filename: part.filename ?? "attachment" })]
+      : [])
+
+    await useSessionUIStore.getState().sendMessage(
+      prompt.text,
+      providerID,
+      modelID,
+      session?.agent ?? lastChoice?.agent,
+      attachments,
+      prompt.agentMentionName,
+      additionalParts.length > 0 ? additionalParts : undefined,
+      session?.model?.variant ?? lastChoice?.variant,
+      "normal",
+      { sessionId, directory: directory ?? undefined, userInitiated: true },
+    )
+  } finally {
+    retriesInFlight.delete(sessionId)
   }
 }
 
@@ -3036,7 +3166,7 @@ export async function forkFromMessage(sessionId: string, messageId: string): Pro
   // The forked session is a fresh draft target, so the attached context of the
   // forked message follows the text into its composer.
   restoreContextPartsToInput(
-    contextCarriersForMessage(state.message[sessionId] ?? [], messageId),
+    contextCarriersForMessage(state.message[sessionId] ?? [], messageId).map((carrier) => carrier.part),
     { directory: target.directory, sessionKey: forkedSession.id },
   )
   await inheritForkState(sessionId, forkedSession, target.directory, expectedRuntimeKey)

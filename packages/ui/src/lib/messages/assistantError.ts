@@ -78,11 +78,12 @@ const readAssistantErrorDetail = (info: Message): AssistantErrorDetail | null =>
     return detail ? { name: errorName, detail } : null;
 };
 
-type AssistantErrorNotice = { text: string };
+type AssistantErrorNotice = { text: string; retryable: boolean };
 
 /**
  * The sentence the transcript prints for a message's recorded error, or null
- * when the message carries none worth showing.
+ * when the message carries none worth showing. `retryable` says whether that
+ * error is a turn to run again: a stop is not.
  */
 export const assistantErrorNotice = (info: Message): AssistantErrorNotice | null => {
     const errorDetail = readAssistantErrorDetail(info);
@@ -91,13 +92,13 @@ export const assistantErrorNotice = (info: Message): AssistantErrorNotice | null
     }
     const { name: errorName, detail } = errorDetail;
     if (errorName === 'SessionRetry') {
-        return { text: `Opencode failed to send a message. Retry attempt info: ${detail}` };
+        return { text: `Opencode failed to send a message. Retry attempt info: ${detail}`, retryable: true };
     }
     if (isLikelyProviderAuthFailure(detail)) {
-        return { text: PROVIDER_AUTH_FAILURE_MESSAGE };
+        return { text: PROVIDER_AUTH_FAILURE_MESSAGE, retryable: true };
     }
     if (isStoppedTurnError(errorName, detail)) {
-        return { text: STOPPED_TURN_MESSAGE };
+        return { text: STOPPED_TURN_MESSAGE, retryable: false };
     }
-    return { text: `Opencode failed to send message with error: ${detail}` };
+    return { text: `Opencode failed to send message with error: ${detail}`, retryable: true };
 };

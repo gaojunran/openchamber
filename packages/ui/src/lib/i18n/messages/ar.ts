@@ -2016,6 +2016,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'إظهار السجل الزمني للتشخيص',
   'chat.sessionError.noReply': 'لم يبدأ OpenCode ردًا على هذه الرسالة.',
   'chat.sessionError.interrupted': 'قاطع OpenCode هذا الرد.',
+  'chat.sessionError.retry': 'إعادة المحاولة',
+  'chat.sessionError.retryFailed': 'تعذّرت إعادة المحاولة لهذه الدورة.',
   'chat.longError.expand': 'عرض الخطأ كاملًا',
   'chat.longError.collapse': 'عرض أقل',
   'chat.errorDetails.show': 'عرض تفاصيل الرد',

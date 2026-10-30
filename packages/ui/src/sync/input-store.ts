@@ -136,6 +136,30 @@ const getDataUrlByteSize = (url: string): number => {
   return Math.max(0, Math.floor((payload.length * 3) / 4) - padding)
 }
 
+/**
+ * An attachment rebuilt from a message's file part. Reverting puts it back on
+ * the composer; a retry sends it again without restoring anything, so both
+ * paths build it here.
+ */
+export function restoredAttachmentFrom({ url, mimeType, filename }: { url: string; mimeType: string; filename: string }): AttachedFile {
+  const basename = attachmentBasename(filename)
+  // Use "local" source so the file renders in AttachedFilesList.
+  // Set serverPath to the URL so ImagePreview can use it as the img src
+  // when dataUrl is not a data: URL. sanitizeAttachmentsForSend leaves
+  // dataUrl alone for non-server sources, so the URL stays intact on send.
+  return {
+    id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    file: new File([], basename, { type: mimeType }),
+    dataUrl: url,
+    mimeType,
+    filename: basename,
+    agentPath: basename !== filename ? filename : undefined,
+    size: getDataUrlByteSize(url),
+    source: "local",
+    serverPath: url,
+  }
+}
+
 const isSameVSCodeActiveEditorFile = (a: VSCodeActiveEditorFile | null, b: VSCodeActiveEditorFile | null): boolean => {
   if (a === b) return true
   if (!a || !b) return false
@@ -535,24 +559,7 @@ export const useInputStore = create<InputState>()((set, get) => ({
   },
 
   addRestoredAttachment: ({ url, mimeType, filename }, target) => {
-    const id = `restored-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const basename = attachmentBasename(filename)
-    // Use "local" source so the file renders in AttachedFilesList.
-    // Set serverPath to the URL so ImagePreview can use it as the img src
-    // when dataUrl is not a data: URL. sanitizeAttachmentsForSend leaves
-    // dataUrl alone for non-server sources, so the URL stays intact on send.
-    const attached: AttachedFile = {
-      id,
-      file: new File([], basename, { type: mimeType }),
-      dataUrl: url,
-      mimeType,
-      filename: basename,
-      agentPath: basename !== filename ? filename : undefined,
-      size: getDataUrlByteSize(url),
-      source: "local",
-      serverPath: url,
-    }
-    set((state) => appendAttachedFiles(state, [attached], target))
+    set((state) => appendAttachedFiles(state, [restoredAttachmentFrom({ url, mimeType, filename })], target))
   },
 }))
 

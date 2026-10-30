@@ -2083,6 +2083,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': '診断タイムラインを表示',
   'chat.sessionError.noReply': 'OpenCode はこのメッセージへの返答を開始しませんでした。',
   'chat.sessionError.interrupted': 'OpenCode がこの応答を中断しました。',
+  'chat.sessionError.retry': '再試行',
+  'chat.sessionError.retryFailed': 'このターンを再試行できませんでした。',
   'chat.longError.expand': 'エラー全文を表示',
   'chat.longError.collapse': '折りたたむ',
   'chat.errorDetails.show': 'レスポンスの詳細を表示',

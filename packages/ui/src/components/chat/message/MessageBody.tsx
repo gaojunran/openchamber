@@ -281,6 +281,8 @@ interface MessageBodyProps {
     errorMessage?: string;
     /** Raw provider response behind `errorMessage`, shown as collapsed details. */
     errorResponseBody?: string;
+    /** Runs the failed turn again; absent when this turn is not the one that can be retried. */
+    onRetryTurn?: () => void;
     /** A user message renders as two siblings: the bubble, and the actions row under it. */
     userMessagePart?: 'bubble' | 'actions';
     reviewTransferDirection?: ReviewTransferDirection | null;
@@ -1221,6 +1223,7 @@ const AssistantMessageBody = React.memo(({
     turnGroupingContext,
     errorMessage,
     errorResponseBody,
+    onRetryTurn,
     reviewTransferDirection = null,
     contextPinned,
     contextPinPending,
@@ -2291,6 +2294,18 @@ const AssistantMessageBody = React.memo(({
                                             )}
                                         </LongErrorText>
                                     </div>
+                                    {onRetryTurn ? (
+                                        <Button
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={onRetryTurn}
+                                            aria-label={t('chat.sessionError.retry')}
+                                            title={t('chat.sessionError.retry')}
+                                            className="shrink-0 self-start"
+                                        >
+                                            <Icon name="refresh" className="size-3.5" />
+                                        </Button>
+                                    ) : null}
                                 </div>
                                 {errorResponseBody ? <ErrorResponseDetails body={errorResponseBody} className="mt-1 ps-7" /> : null}
                             </div>

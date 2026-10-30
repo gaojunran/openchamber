@@ -43,7 +43,7 @@ import { useI18n } from '@/lib/i18n';
 import { useSnippetsStore } from '@/stores/useSnippetsStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { getContextObligatoryMessages } from '@/lib/contextObligatoryMessages';
-import { setContextObligatoryMessage } from '@/sync/session-actions';
+import { retryLastTurn, setContextObligatoryMessage } from '@/sync/session-actions';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useChatColumnActions } from './chatColumnSession';
 
@@ -484,6 +484,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         ? message.info.error?.response?.body.trim() || undefined
         : undefined;
 
+    // Only the session's newest turn can be run again: a retry takes the last
+    // prompt back, and every later turn would go with it.
+    const handleRetryTurn = React.useCallback(async () => {
+        try {
+            await retryLastTurn(sessionId);
+        } catch (error) {
+            toast.error(error instanceof Error && error.message ? error.message : t('chat.sessionError.retryFailed'));
+        }
+    }, [sessionId, t]);
+    const retryTurn = assistantError?.retryable && (turnGroupingContext?.isLatestTurn ?? false) && sessionId
+        ? () => { void handleRetryTurn(); }
+        : undefined;
+
     const messageTextContent = React.useMemo(() => {
         if (isUser) {
             return flattenUserTextParts(visibleParts);
@@ -678,6 +691,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                                 onToggleContextPin={canPinIntoContext && messageCreatedAt ? handleToggleContextPin : undefined}
                                                 errorMessage={assistantErrorText}
                                                 errorResponseBody={assistantErrorResponseBody}
+                                                onRetryTurn={retryTurn}
                                                 extraActions={guestMessageActions}
                                                 promptOrigin={promptOrigin}
                                             />
@@ -715,6 +729,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                         onToggleContextPin={canPinIntoContext && messageCreatedAt ? handleToggleContextPin : undefined}
                                         errorMessage={assistantErrorText}
                                         errorResponseBody={assistantErrorResponseBody}
+                                        onRetryTurn={retryTurn}
                                         userMessagePart="actions"
                                         extraActions={guestMessageActions}
                                     />
@@ -756,6 +771,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                                 turnGroupingContext={turnGroupingContext}
                                 errorMessage={assistantErrorText}
                                 errorResponseBody={assistantErrorResponseBody}
+                                onRetryTurn={retryTurn}
                                 reviewTransferDirection={reviewTransferDirection}
                                 footerProviderID={headerProviderID}
                                 footerModelName={headerModelName}

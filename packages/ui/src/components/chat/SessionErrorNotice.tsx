@@ -1,6 +1,7 @@
 import React from 'react';
-import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui';
+import { Icon } from '@/components/icon/Icon';
 import { ErrorResponseDetails } from '@/components/chat/ErrorResponseDetails';
 import { useI18n } from '@/lib/i18n';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
@@ -9,7 +10,7 @@ import { getLastConversationMessage, type Message, type Part, type Session, type
 import { useLatestSessionError } from '@/sync/notification-store';
 import { responseBodyOf, summarizeOpenCodeError } from '@/sync/session-error-log';
 import { useDirectoryStore, useSessionStatus, useSessionStatusSnapshotReady } from '@/sync/sync-context';
-import { refetchSessionMessages } from '@/sync/session-actions';
+import { refetchSessionMessages, retryLastTurn } from '@/sync/session-actions';
 import { LongErrorText } from './LongErrorText';
 import { findRecordedTurnError, readLastMessageState, scheduleUnansweredRechecks, type LastMessageState } from './sessionErrorNoticeState';
 
@@ -192,6 +193,27 @@ export const SessionErrorNotice: React.FC<SessionErrorNoticeProps> = ({ sessionI
   }, [unansweredKey, sessionId]);
   const unanswered = unansweredKey !== null && verifiedKey === unansweredKey;
 
+  // Only a turn the client knows failed can be retried: a prompt that merely
+  // never answered may still be running server-side, and a turn the user
+  // interrupted is not a failure to repeat.
+  const retryable = isIdle && (
+    reportedError !== null
+    || (storedFailureApplies && storedFailure?.outcome === 'failed')
+  );
+  const [retrying, setRetrying] = React.useState(false);
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await retryLastTurn(sessionId);
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('chat.sessionError.retryFailed');
+      toast.error(message);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   if (!reportedError && !storedFailureApplies && !unanswered) return null;
 
   let title: string;
@@ -230,6 +252,19 @@ export const SessionErrorNotice: React.FC<SessionErrorNoticeProps> = ({ sessionI
         <div className="flex items-center gap-2">
           <Icon name="error-warning" className="size-3.5 shrink-0 text-[var(--status-error)]" />
           <span className="typography-meta font-medium text-foreground">{title}</span>
+          {retryable ? (
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => { void handleRetry(); }}
+              disabled={retrying}
+              aria-label={t('chat.sessionError.retry')}
+              title={t('chat.sessionError.retry')}
+              className="ms-auto shrink-0"
+            >
+              <Icon name="refresh" className="size-3.5" />
+            </Button>
+          ) : null}
         </div>
         <LongErrorText text={detail} buttonClassName="ms-[0.875rem]">
           {(visibleText) => (
