@@ -1,0 +1,98 @@
+name: selfbuild dmg
+
+# Builds a daily-driver DMG from upstream main plus the PRs in selfbuild/prs.txt.
+# Runs on a public-repo macOS runner (free on public repositories). The app is
+# unsigned: macOS quarantines anything downloaded from a browser, so after
+# downloading the artifact run `xattr -cr /Applications/OpenChamber.app` once.
+#
+# The trigger is a push, not workflow_dispatch alone: this workflow lives on the
+# `selfbuild` branch while the repository default branch is `main`, and GitHub
+# only offers workflow_dispatch for workflows present on the default branch.
+
+on:
+  push:
+    branches: [selfbuild]
+    paths:
+      - 'selfbuild/**'
+      - '.github/workflows/selfbuild-dmg.yml'
+  workflow_dispatch:
+    inputs:
+      prs:
+        description: 'PR numbers to merge instead of selfbuild/prs.txt (comma separated)'
+        required: false
+        default: ''
+
+concurrency:
+  group: selfbuild-dmg-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the script merges upstream PR heads into a worktree.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Point the build at upstream
+        run: git remote add upstream https://github.com/openchamber/openchamber.git
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Merge, type-check, package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          SELFBUILD_PRS: ${{ inputs.prs }}
+        run: |
+          extra=()
+          if [ -n "$SELFBUILD_PRS" ]; then extra=(--prs "$SELFBUILD_PRS"); fi
+          node selfbuild/oc-selfbuild.mjs --no-install --out "$RUNNER_TEMP/out" "${extra[@]}"
+
+      - name: Checksums
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/out" 2>/dev/null || exit 0
+          shasum -a 256 *.dmg 2>/dev/null | tee "$RUNNER_TEMP/out/SHA256SUMS" || true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### selfbuild'
+            if [ -f "$RUNNER_TEMP/out/selfbuild-report.json" ]; then
+              echo '```json'
+              cat "$RUNNER_TEMP/out/selfbuild-report.json"
+              echo '```'
+            else
+              echo 'No report: the merge or the packaging step failed, see the log above.'
+            fi
+            echo
+            echo 'Install the downloaded artifact:'
+            echo '```sh'
+            echo 'hdiutil attach -nobrowse ~/Downloads/OpenChamber-*.dmg'
+            echo 'ditto "/Volumes/OpenChamber/OpenChamber.app" /Applications/OpenChamber.app'
+            echo 'xattr -cr /Applications/OpenChamber.app   # unsigned build, and the browser put a quarantine flag on it'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selfbuild-dmg-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/out/*.dmg
+            ${{ runner.temp }}/out/selfbuild-report.json
+            ${{ runner.temp }}/out/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
