@@ -69,10 +69,15 @@ jobs:
               --json number,headRefOid --jq 'sort_by(.number)|map("\(.number):\(.headRefOid)")|join(",")')"
           fi
           skip="$({ grep -vE '^[[:space:]]*(#|$)' selfbuild/skip.txt 2>/dev/null || true; } | tr -d ' ' | sort -n | tr '\n' ',')"
-          signature="$(printf '%s|%s|%s' "$set_desc" "$set_pairs" "$skip" | sha256sum | cut -c1-12)"
+          # An upstream version bump is worth a rebuild on its own: it is how a
+          # new release reaches the daily build.
+          upstream_version="$(gh api "repos/$UPSTREAM/contents/packages/electron/package.json?ref=main" --jq '.content' \
+            | base64 -d | (jq -r '.version // empty' || true))"
+          signature="$(printf '%s|%s|%s|%s' "$set_desc" "$set_pairs" "$skip" "$upstream_version" | sha256sum | cut -c1-12)"
 
           echo "set      ${set_desc:-<none>}"
           echo "skip     ${skip:-<none>}"
+          echo "upstream ${upstream_version:-<unknown>}"
           echo "signature $signature"
 
           echo "prs=$set_desc" >> "$GITHUB_OUTPUT"
