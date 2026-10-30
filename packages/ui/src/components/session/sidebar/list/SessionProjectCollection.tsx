@@ -52,6 +52,7 @@ import type { DeleteSessionConfirmState } from '../sessions/useSessionActions';
 import { useExpandedParents } from '../sessions/useExpandedParents';
 import { getChatsRootFromDirectory, isChatDirectoryPath } from '@/lib/chatDirectories';
 import { useChatsRoot } from '@/hooks/useChatsRoot';
+import { isVSCodeWithoutWorkspace } from '@/lib/vscodeBootstrap';
 import { isCapacitorApp } from '@/lib/platform';
 import { deriveTimelineActivityItems, matchZoneSessionsForSidebarQuery, pruneSessionTreeForSidebarQuery } from '../recent/activitySections';
 import { resolveSidebarSessionLocations } from '../recent/sessionLocation';
@@ -70,6 +71,7 @@ import { useUIStore } from '@/stores/useUIStore';
 import { isSessionInWork } from '@/lib/sessionWorkMetadata';
 import { isSessionPinned } from '@/lib/sessionPins';
 import { buildMultiRunIndex } from '@/lib/multirun/runs';
+import { useI18n } from '@/lib/i18n';
 
 // A branch without a live change request is asked again when something could
 // have opened one: an agent turn finishing in its directory (at once), or the
@@ -166,6 +168,7 @@ type SessionProjectCollectionProps = {
 };
 
 const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topology, view, actions }) => {
+  const { t } = useI18n();
   const { alwaysShowActions, projectViewActions, rowActions, ...scrollerActions } = actions;
   const foldersMap = useSessionFoldersStore((state) => state.foldersMap);
   const collapsedFolderIds = useSessionFoldersStore((state) => state.collapsedFolderIds);
@@ -274,13 +277,16 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     setCurrentSession(sessionId, sessionDirectory);
   }, [setCurrentSession]);
   const prefetchSession = usePrefetchSessionMessages();
-  const { buildGroupedSessions, filterSessionNodesForSearch, buildGroupSearchText } = useSessionGrouping({
+  const { buildGroupedSessions, getGroupingSessions, filterSessionNodesForSearch, buildGroupSearchText } = useSessionGrouping({
     homeDirectory: view.homeDirectory,
     worktreeMetadata: topology.worktreeMetadata,
     pinnedSessionIds: collection.pinnedSessionIds,
     sessionOrderRanks: collection.sessionOrderRanks,
     gitBranches: topology.gitBranches,
     isVSCode: topology.isVSCode,
+    sessionById: collection.sessionById,
+    childrenMap: collection.childrenMap,
+    nestedSessionIds: collection.nestedSessionIds,
     sessionOwners: ownership.bySessionId,
     spacesByProject,
     runKeyBySessionId,
@@ -291,7 +297,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
   // for every group the sidebar renders — the chats group included. A group the
   // hook never sees renders an empty list while a search is active.
   const chatGroup = React.useMemo<SessionGroup | null>(() => {
-    if (topology.isVSCode) return null;
+    if (topology.isVSCode && !isVSCodeWithoutWorkspace()) return null;
     const chatsRoot = knownChatsRoot
       ?? collection.chatSessions.map((session) => getChatsRootFromDirectory(session.directory)).find(Boolean)
       ?? null;
@@ -317,9 +323,17 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
         .map((session) => buildActiveSessionNode(collection.childrenMap, session)),
     };
   }, [collection.chatSessions, collection.childrenMap, collection.nestedSessionIds, knownChatsRoot, topology.isVSCode]);
+  const archivedChatGroup = React.useMemo<SessionGroup | null>(() => {
+    if (!chatGroup || !topology.isVSCode || !view.showInlineArchived) return null;
+    const sessions = collection.archivedSessions
+      .filter((session) => isChatDirectoryPath(session.directory) && !session.parentID)
+      .map((session) => ({ session, children: [], worktree: null }));
+    if (sessions.length === 0) return null;
+    return { ...chatGroup, id: 'managed-chats-archived', label: t('sessions.sidebar.grouping.archived'), isMain: false, isArchivedBucket: true, directory: null, folderScopeKey: null, sessions, folderScopes: [] };
+  }, [chatGroup, collection.archivedSessions, t, topology.isVSCode, view.showInlineArchived]);
   const standaloneGroups = React.useMemo<SessionGroup[]>(
-    () => chatGroup ? [chatGroup] : EMPTY_STANDALONE_GROUPS,
-    [chatGroup],
+    () => chatGroup ? [chatGroup, ...(archivedChatGroup ? [archivedChatGroup] : [])] : EMPTY_STANDALONE_GROUPS,
+    [archivedChatGroup, chatGroup],
   );
   const { projectSections, groupSearchDataByGroup, sectionsForRender, flatSectionsForRender } = useSessionSidebarSections({
     normalizedProjects: topology.projects,
@@ -332,6 +346,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     sessionOrderRanks: collection.sessionOrderRanks,
     lastRepoStatus: topology.lastRepoStatus,
     buildGroupedSessions,
+    getGroupingSessions,
     hasSessionSearchQuery: view.hasSessionSearchQuery,
     normalizedSessionSearchQuery: view.normalizedSessionSearchQuery,
     filterSessionNodesForSearch,
@@ -1022,6 +1037,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     authoritativeSections: projectSections,
     // Hidden only from the list: folders and search keep the group.
     chatGroup: showChatsSection ? chatGroup : null,
+    archivedChatGroup: showChatsSection ? archivedChatGroup : null,
     pinnedItems,
     pinnedWorktrees: pinnedWorktreeEntries,
     workEntries,
@@ -1046,6 +1062,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     liveSpaceIds,
     groupStatusByKey,
     folderAuthorityByOwner,
+    sessionOwnerById: ownership.bySessionId,
     activeProjectId: view.activeProjectId,
     singleProjectMode,
     singleProjectId: selectedSingleProjectId,
@@ -1054,7 +1071,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     projectsCaption: !view.hideDirectoryControls,
     sessionBatchSize: singleProjectMode && !view.useGroupedSections ? 20 : undefined,
     runIndex,
-  }), [runIndex, chatGroup, showChatsSection, projectView.collapsedActivities, pinnedItems, pinnedWorktreeEntries, workEntries, timeEntries, draftPlacement, movedSessionIds, movedGroupKeys, zoneSessionIds, detailedZoneRows, collapsedFolderIds, collection.pinnedSessionIds, expandedParents, folderAuthorityByOwner, foldersMap, groupSearchDataByGroup, groupStatusByKey, orderedSectionsForRender, projectSections, collapsedGroups, projectView.collapsedProjects, selectedSingleProjectId, sessionOrderIndex, singleProjectMode, view.activeProjectId, view.hasSessionSearchQuery, view.hideDirectoryControls, view.normalizedSessionSearchQuery, view.showOnlyMainWorkspace, view.useGroupedSections, visibleCountByContainer, worktreeArchiveAnchors, liveSpaceIds]);
+  }), [runIndex, archivedChatGroup, chatGroup, showChatsSection, projectView.collapsedActivities, pinnedItems, pinnedWorktreeEntries, workEntries, timeEntries, draftPlacement, movedSessionIds, movedGroupKeys, zoneSessionIds, detailedZoneRows, collapsedFolderIds, collection.pinnedSessionIds, expandedParents, folderAuthorityByOwner, foldersMap, groupSearchDataByGroup, groupStatusByKey, orderedSectionsForRender, ownership.bySessionId, projectSections, collapsedGroups, projectView.collapsedProjects, selectedSingleProjectId, sessionOrderIndex, singleProjectMode, view.activeProjectId, view.hasSessionSearchQuery, view.hideDirectoryControls, view.normalizedSessionSearchQuery, view.showOnlyMainWorkspace, view.useGroupedSections, visibleCountByContainer, worktreeArchiveAnchors, liveSpaceIds]);
   React.useEffect(() => {
     onSearchMatchCountChange(sidebarRowModel.searchMatchCount);
   }, [onSearchMatchCountChange, sidebarRowModel.searchMatchCount]);
@@ -1175,6 +1192,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     >
       <SessionBulkActions
         getFolderScopesForProject={getFolderScopesForProject}
+        folderOwnerKeyBySessionId={sidebarRowModel.folderOwnerKeyBySessionId}
         isInlineEditing={editingId !== null}
         startFolderRename={startFolderRename}
       />

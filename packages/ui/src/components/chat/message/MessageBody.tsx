@@ -13,6 +13,7 @@ import type { TurnChangedFile, TurnGroupingContext } from '../lib/turns/types';
 import { cn } from '@/lib/utils';
 import { isEmptyTextPart, extractTextContent } from './partUtils';
 import { isInvisibleText } from '@/lib/invisibleText';
+import { attachmentBasename } from '@/lib/attachmentIdentity';
 import { FadeInOnReveal } from './FadeInOnReveal';
 import { SessionNoticeBlock } from './SessionNoticeBlock';
 import { readSessionNoticePart } from '@/lib/opencode/session-notices';
@@ -75,7 +76,7 @@ import { useAgentColors } from '@/hooks/useAgentColors';
 import { isCapacitorMobileApp } from '@/apps/mobileNativeChrome';
 import { shareFileFromNativeApp } from '@/lib/nativeFileShare';
 import { WorktreeRequiresGitRepositoryError } from '@/lib/worktrees/worktreeCreate';
-import { buildTurnImageExportSource, cloneMessageImageExportSource } from './imageExport';
+import { buildTurnImageExportSource, cloneMessageImageExportSource, fitMessageImageExportLayout, resolveMessageImageExportPixelRatio, resolveMessageImageExportWidth } from './imageExport';
 import { hasTextSelectionInside } from '@/lib/textSelection';
 
 
@@ -456,7 +457,7 @@ const UserMessageBody = React.memo(({ messageId, parts, messageCreatedAt, isMobi
 
     const sessionMentionChips = React.useMemo(() => sessionMentionChipsOf(parts), [parts]);
     const attachmentFilenames = React.useMemo(() => parts.flatMap((part) => (
-        part.type === 'file' && part.filename ? [part.filename] : []
+        part.type === 'file' && part.filename ? [attachmentBasename(part.filename)] : []
     )), [parts]);
 
     const attachmentFiles = React.useMemo(() => parts.filter((part): part is FilePart => (
@@ -1527,14 +1528,26 @@ const AssistantMessageBody = React.memo(({
                     computedStyle.backgroundColor ||
                     window.getComputedStyle(document.body).backgroundColor;
                 const paddingSize = 24;
+                // The turn source is built off-screen, so the visible column is the
+                // only element still holding the width the reader saw.
+                const exportWidth = resolveMessageImageExportWidth(messageContentRef.current ?? originalElement);
 
                 wrapper = document.createElement('div');
                 wrapper.setAttribute('data-message-image-export', 'true');
                 wrapper.style.cssText = `
                     padding: ${paddingSize}px;
+                    ${exportWidth ? `width: ${exportWidth}px; box-sizing: content-box;` : ''}
                     background-color: ${resolvedBackgroundColor};
                     display: inline-block;
                 `;
+                // Scrollbars are dead weight in a still image, and hiding them stops
+                // their gutter from clipping the last column of a wide table.
+                const exportStyle = document.createElement('style');
+                exportStyle.textContent = `
+                    [data-message-image-export] * { scrollbar-width: none; }
+                    [data-message-image-export] *::-webkit-scrollbar { display: none; }
+                `;
+                wrapper.appendChild(exportStyle);
 
                 const clone = cloneMessageImageExportSource(originalElement);
                 clone.style.cssText = `
@@ -1542,6 +1555,13 @@ const AssistantMessageBody = React.memo(({
                     transform: none;
                     contain: none;
                 `;
+
+                // A column-width canvas would clip an unwrapped code line behind its
+                // scroll container, so long lines wrap only for the export.
+                const codeWrapRoots = clone.querySelectorAll<HTMLElement>('[data-code-wrap]');
+                codeWrapRoots.forEach((root) => {
+                    root.setAttribute('data-code-wrap', 'true');
+                });
 
                 const actionRows = clone.querySelectorAll<HTMLElement>('[data-message-actions="true"]');
                 actionRows.forEach((row) => {
@@ -1579,9 +1599,21 @@ const AssistantMessageBody = React.memo(({
                 wrapper.appendChild(clone);
                 document.body.appendChild(wrapper);
 
+                if (exportWidth) {
+                    // Keep the clone at the column so prose wraps where the reader saw it;
+                    // only the canvas and the clipped blocks grow.
+                    fitMessageImageExportLayout(wrapper, clone, exportWidth);
+                }
+
+                const bounds = wrapper.getBoundingClientRect();
+                const canvasWidth = Math.ceil(bounds.width);
+                const canvasHeight = Math.ceil(bounds.height);
+
                 const dataUrl = await toPng(wrapper, {
                     quality: 1,
-                    pixelRatio: 2,
+                    width: canvasWidth,
+                    height: canvasHeight,
+                    pixelRatio: resolveMessageImageExportPixelRatio(canvasWidth, canvasHeight),
                     backgroundColor: resolvedBackgroundColor,
                 });
 
@@ -2250,6 +2282,7 @@ const AssistantMessageBody = React.memo(({
                                         <LongErrorText text={errorMessage ?? ''}>
                                             {(visibleText) => (
                                                 <SimpleMarkdownRenderer
+                                                    singleTilde={false}
                                                     content={visibleText}
                                                     onShowPopup={onShowPopup}
                                                     className="[&_.markdown-content>*:first-child]:mt-0 [&_.markdown-content>*:last-child]:mb-0"

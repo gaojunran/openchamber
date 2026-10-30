@@ -1,6 +1,8 @@
 import { getRuntimeUrlResolver } from './runtime-url';
 import { runtimeFetch } from './runtime-fetch';
 import { useAuthSessionStore, waitForAuthSession } from './runtime-auth-expiry';
+import { getRuntimeExtraHeadersSync } from './runtime-auth';
+import { isCapacitorApp } from './platform';
 import { isRelayModeActive } from './relay/runtime-tunnel';
 import { subscribeRuntimeEndpointChanged } from './runtime-switch';
 import { isVSCodeRuntime } from './desktop';
@@ -19,7 +21,7 @@ type ScheduledTaskRanEvent = {
   projectId: string;
   taskId: string;
   ranAt: number;
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'sent' | 'success' | 'error';
   sessionId?: string;
 };
 
@@ -270,7 +272,7 @@ const worktreeChangedPropertiesSchema = z.object({
 });
 
 let eventSource: EventSource | null = null;
-let relayAbortController: AbortController | null = null;
+let streamAbortController: AbortController | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let authSessionWait: AbortController | null = null;
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -321,17 +323,17 @@ const scheduleReconnect = () => {
 
 const cleanupSource = () => {
   clearHeartbeatTimer();
-  relayAbortController?.abort();
-  relayAbortController = null;
+  streamAbortController?.abort();
+  streamAbortController = null;
   if (eventSource) {
     eventSource.close();
   }
   eventSource = null;
 };
 
-const connectRelay = (canControlBrowser: boolean) => {
+const connectFetchStream = (canControlBrowser: boolean) => {
   const controller = new AbortController();
-  relayAbortController = controller;
+  streamAbortController = controller;
   void (async () => {
     try {
       const response = await runtimeFetch('/api/openchamber/events', {
@@ -381,7 +383,7 @@ const connectRelay = (canControlBrowser: boolean) => {
     } catch {
       // A failed or ended stream follows the same reconnect path as EventSource.
     }
-    if (relayAbortController !== controller) return;
+    if (streamAbortController !== controller) return;
     cleanupSource();
     scheduleReconnect();
   })();
@@ -665,7 +667,7 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
   const taskId = typeof properties?.taskId === 'string' ? properties.taskId : '';
   const ranAt = typeof properties?.ranAt === 'number' ? properties.ranAt : Date.now();
   const rawStatus = properties?.status;
-  const status = rawStatus === 'running' || rawStatus === 'error' ? rawStatus : 'success';
+  const status = rawStatus === 'running' || rawStatus === 'sent' || rawStatus === 'error' ? rawStatus : 'success';
   if (!projectId || !taskId) {
     return;
   }
@@ -689,7 +691,7 @@ const connect = () => {
   if (typeof window === 'undefined' || listeners.size === 0) {
     return;
   }
-  if (relayAbortController || (eventSource && eventSource.readyState !== EventSource.CLOSED)) {
+  if (streamAbortController || (eventSource && eventSource.readyState !== EventSource.CLOSED)) {
     return;
   }
 
@@ -700,8 +702,10 @@ const connect = () => {
   // driven, and the agent tool needs to know which it is talking to without a
   // setting anyone has to remember to change.
   const canControlBrowser = canDriveBrowserPage();
-  if (isRelayModeActive()) {
-    connectRelay(canControlBrowser);
+  // Native mobile has no desktop realtime proxy. Fetch can attach the saved
+  // instance headers to SSE; EventSource cannot.
+  if (isRelayModeActive() || (Object.keys(getRuntimeExtraHeadersSync()).length > 0 && isCapacitorApp())) {
+    connectFetchStream(canControlBrowser);
     return;
   }
   if (typeof EventSource !== 'function') return;
