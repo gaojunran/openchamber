@@ -206,6 +206,44 @@ function unionMarkdown(file) {
     return true;
 }
 
+/**
+ * Two edits the disposable worktree gets, so the app knows it is a selfbuild and
+ * never offers an upstream update that would replace it (and the PRs in it):
+ * the updater bails out when `self-build.json` sits in Resources, and the
+ * afterPack hook (which already verifies the bundle) writes that file.
+ */
+function patchSelfBuildBundle() {
+    const state = { guard: false, hook: false };
+    const mainFile = path.join(workdir, 'packages/electron/main.mjs');
+    const afterPackFile = path.join(workdir, 'packages/electron/scripts/after-pack.cjs');
+
+    const mainSource = fs.readFileSync(mainFile, 'utf8');
+    const mainAnchor = 'const setupAutoUpdater = () => {\n  if (!app.isPackaged) {\n    return;\n  }\n';
+    if (mainSource.includes('self-build.json')) {
+        log('updater guard: already present');
+    } else if (!mainSource.includes(mainAnchor)) {
+        log('updater guard: anchor moved upstream, skipped (the app may offer updates)');
+    } else {
+        fs.writeFileSync(mainFile, mainSource.replace(mainAnchor, `${mainAnchor}  if (fs.existsSync(path.join(process.resourcesPath, 'self-build.json'))) {\n    return;\n  }\n`));
+        state.guard = true;
+        log('updater guard: installed');
+    }
+
+    const hook = fs.readFileSync(afterPackFile, 'utf8');
+    const hookAnchor = '  verifyPackagedAppContents(resourcesPath);\n';
+    if (hook.includes('self-build.json')) {
+        log('self-build.json hook: already present');
+    } else if (!hook.includes(hookAnchor)) {
+        log('self-build.json hook: anchor moved upstream, skipped');
+    } else {
+        fs.writeFileSync(afterPackFile, hook.replace(hookAnchor, `${hookAnchor}\n  const reportPath = path.join(__dirname, '..', '..', '..', 'selfbuild-report.json');\n  if (fs.existsSync(reportPath)) {\n    fs.copyFileSync(reportPath, path.join(resourcesPath, 'self-build.json'));\n  }\n`));
+        log('self-build.json hook: installed');
+        state.hook = true;
+    }
+
+    return state;
+}
+
 function ensureWorktree(baseRef) {
     const isWorktree = spawnSync('git', ['-C', workdir, 'rev-parse', '--git-dir'], { stdio: 'ignore' }).status === 0;
     if (isWorktree) {
@@ -274,10 +312,9 @@ function main() {
 
     ensureWorktree(baseRef);
     log(`worktree ${workdir} at ${baseSha}`);
-
+    const patched = patchSelfBuildBundle();
     const merged = [];
     const skipped = [];
-
     for (const entry of ordered) {
         const ref = entry.ref;
         const result = spawnSync('git', ['-c', 'merge.conflictStyle=diff3', 'merge', '--no-ff', '--no-edit', '--quiet', ref], {
@@ -359,6 +396,8 @@ function main() {
 
     const installed = args.noInstall ? null : installApp(artifact, report);
 
+    verifySelfBuildMarkers(patched, distDir);
+
     const summary = { artifact, seconds: elapsed, installed };
     fs.appendFileSync(logFile, `${JSON.stringify({ ...report, ...summary })}\n`);
     printSummary(report, summary);
@@ -387,6 +426,25 @@ function installApp(dmgPath, report) {
     } finally {
         spawnSync('hdiutil', ['detach', volume, '-quiet']);
     }
+}
+
+/** Fails the build if a patch was applied but did not reach the packaged app. */
+function verifySelfBuildMarkers(patched, distDir) {
+    const appDir = (fs.existsSync(distDir) ? fs.readdirSync(distDir) : [])
+        .filter((name) => name.startsWith('mac'))
+        .map((name) => path.join(distDir, name, 'OpenChamber.app', 'Contents', 'Resources'))
+        .find((candidate) => fs.existsSync(candidate));
+    if (!appDir) throw new Error(`no packaged .app under ${distDir}`);
+
+    const reportInside = fs.existsSync(path.join(appDir, 'self-build.json'));
+    if (patched.hook && !reportInside) throw new Error('self-build.json did not reach the packaged app');
+    log(`self-build.json in bundle: ${reportInside ? 'yes' : 'no'}`);
+
+    const bundleMain = path.join(workdir, 'packages/electron/dist-bundle/main.mjs');
+    if (!fs.existsSync(bundleMain)) return;
+    const guarded = fs.readFileSync(bundleMain, 'utf8').includes('self-build.json');
+    if (patched.guard && !guarded) throw new Error('updater guard did not reach dist-bundle/main.mjs');
+    log(`updater guard in bundle: ${guarded ? 'yes' : 'no'}`);
 }
 
 function printSummary(report, summary) {

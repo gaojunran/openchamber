@@ -61,6 +61,13 @@ node ~/code/openchamber/selfbuild/oc-selfbuild.mjs   # 任意 cwd 都行
 - workflow 文件在 `selfbuild` 分支上，而 GitHub 只对**默认分支**上的 workflow 启用 `schedule` / `workflow_dispatch` —— 所以 fork 的默认分支被设成了 `selfbuild`（`main` 仍是上游镜像，供你本地同步用）；
 - 从 CI 下回来的 dmg 带 quarantine，装上后跑一次 `xattr -cr /Applications/OpenChamber.app`。
 
+## 版本号与上游更新
+
+- 编出来的版本号就是**上游 `main` 里 `packages/electron/package.json` 的 version**（合并前先 `fetch upstream main`，所以永远是最新的那个）。
+- 上游把版本号推到 `main` 后，下一次构建（本地或 CI，约 7-9 分钟）自动就是新版本 + 你自己的 PR，不需要任何操作。
+- **应用内更新被主动关掉了**：官方 app 的更新指向 `openchamber/openchamber` 的 release（`updater-feed.mjs` 里写死的），而它是通过 macOS 的 Squirrel.Mac 原地替换的 —— 未签名构建装不上；就算装上了，换回来的是不含你 PR 的官方包。所以 selfbuild 会往 `Contents/Resources/self-build.json` 写一份清单，`setupAutoUpdater` 见到它就直接不启用更新。
+- 想要上游新版本：重跑一次构建。
+
 ## 边界
 
 - **未签名**：本机运行没问题；拷给别人会被 Gatekeeper 拦，这不是构建失败。
