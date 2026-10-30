@@ -28,6 +28,7 @@ const SELECTION_MULTI_CLICK_INTERVAL_MS = 500;
 // Compatibility mouse events follow a touch within this window; they must not
 // summon the soft keyboard when the host owns touch gestures.
 const TOUCH_MOUSE_COMPAT_WINDOW_MS = 1000;
+const SHELL_PROMPT_MARKER = '\u001b]133;';
 
 const isMacPlatform = (platform: string): boolean => /mac|iphone|ipad|ipod/i.test(platform);
 // The glyph fallbacks only supply symbols the text faces are missing (powerline
@@ -749,6 +750,9 @@ export class GhosttyTerminalSurface {
   private scrollbarPointerId: number | null = null;
   private scrollbarPointerOffset = 0;
   private disposed = false;
+  // Last OSC 133 marker: A/B mean a shell is reading a command line, C/D mean a program owns the keys.
+  private atShellPrompt = false;
+  private promptTail = '';
   private resizeNotifyTimer: number | null = null;
   private originY = CONTENT_PADDING;
   private mountHeight = 0;
@@ -936,6 +940,7 @@ export class GhosttyTerminalSurface {
 
   write(data: string): void {
     if (this.disposed) return;
+    this.trackShellPrompt(data);
     this.core.write(data);
     this.synchronizeMouseTrackingState();
     // Restart the blink cycle from the visible phase so the cursor never sits
@@ -943,6 +948,18 @@ export class GhosttyTerminalSurface {
     this.cursorOn = true;
     this.scrollbarDirty = true;
     this.requestRender();
+  }
+
+  /** Tracks the last OSC 133 marker, carrying one split across pty reads. */
+  private trackShellPrompt(data: string): void {
+    const text = this.promptTail + data;
+    const at = text.lastIndexOf(SHELL_PROMPT_MARKER);
+    if (at >= 0) {
+      const mark = text[at + SHELL_PROMPT_MARKER.length];
+      if (mark === 'A' || mark === 'B') this.atShellPrompt = true;
+      else if (mark === 'C' || mark === 'D') this.atShellPrompt = false;
+    }
+    this.promptTail = text.slice(-SHELL_PROMPT_MARKER.length);
   }
 
   /**
@@ -954,6 +971,9 @@ export class GhosttyTerminalSurface {
   resetAndWrite(data: string, drawnSize?: { readonly cols: number; readonly rows: number }): void {
     if (this.disposed) return;
     this.lastMouseMotionData = '';
+    this.atShellPrompt = false;
+    this.promptTail = '';
+    this.trackShellPrompt(data);
     const replayAtDrawnSize =
       drawnSize !== undefined && (drawnSize.cols !== this.cols || drawnSize.rows !== this.rows);
     if (replayAtDrawnSize) {
@@ -1371,7 +1391,7 @@ export class GhosttyTerminalSurface {
     const compositionKey = isTerminalCompositionKey(event, this.composing);
     const lineShortcut = compositionKey ? null : encodeMacLineShortcut(event, navigator.platform);
     const viewportScroll = compositionKey ? null : terminalViewportScrollShortcut(event, navigator.platform);
-    const shellShortcut = (lineShortcut !== null || viewportScroll !== null) && this.core.supportsShellShortcuts();
+    const shellShortcut = (lineShortcut !== null || viewportScroll !== null) && this.core.supportsShellShortcuts(this.atShellPrompt);
     if (lineShortcut !== null && shellShortcut) {
       this.suppressedKeyCodes.add(event.code);
       event.preventDefault();

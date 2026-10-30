@@ -336,3 +336,86 @@ describe('shell shortcut boundaries', () => {
     });
   }
 });
+
+describe('OSC 133 shell prompts', () => {
+  // fish 4.0+ keeps the Kitty protocol on at its prompt (CSI = 5 u).
+  test('keeps Cmd line editing and viewport scrolling while fish reads a command line', async () => {
+    const { sent, key, write, terminal } = await createSurface(MAC_UA, 'MacIntel');
+    write('line\r\n'.repeat(60));
+    write('\x1b[=5u');
+    write('\x1b]133;A;click_events=1\x1b\\');
+    write('\x1b]133;B\x1b\\');
+    const before = terminal['core'].scrollbarState()!;
+    const del = key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, metaKey: true });
+    key('keyup', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, metaKey: true });
+    key('keydown', { key: 'PageUp', code: 'PageUp', keyCode: 33, metaKey: true });
+    key('keyup', { key: 'PageUp', code: 'PageUp', keyCode: 33, metaKey: true });
+    expect(del.defaultPrevented).toBe(true);
+    expect(sent).toEqual(['\x15', '\x01']);
+    expect(terminal['core'].scrollbarState()!.offset).toBeLessThan(before.offset);
+  });
+
+  test('tracks the command line across a command cycle', async () => {
+    const { sent, key, write } = await createSurface(MAC_UA, 'MacIntel');
+    write('\x1b[=5u');
+    write('\x1b]133;A\x1b\\');
+    key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    expect(sent).toEqual(['\x15']);
+    // A command start marker stands the gate down; fish also resets the protocol to 0 here.
+    write('\x1b]133;C;cmdline_url=cat\x1b\\');
+    const running = key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    expect(running.defaultPrevented).toBe(false);
+    expect(sent).toEqual(['\x15']);
+    write('\x1b]133;D;0\x1b\\');
+    write('\x1b]133;A\x1b\\');
+    key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    expect(sent).toEqual(['\x15', '\x15']);
+  });
+
+  test('matches a prompt mark split across pty reads', async () => {
+    const { sent, key, write } = await createSurface(MAC_UA, 'MacIntel');
+    write('\x1b[=5u');
+    write('\x1b]13');
+    write('3;A\x1b\\');
+    key('keydown', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, metaKey: true });
+    key('keyup', { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, metaKey: true });
+    expect(sent).toEqual(['\x05']);
+  });
+
+  test('leaves Option word editing on the encoder at a prompt', async () => {
+    const { sent, key, write } = await createSurface(MAC_UA, 'MacIntel');
+    write('\x1b[=5u');
+    write('\x1b]133;A\x1b\\');
+    key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, altKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, altKey: true });
+    key('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, altKey: true });
+    key('keyup', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, altKey: true });
+    expect(sent).toEqual(['\x1b[127;3u', '\x1b[1;3D']);
+  });
+
+  test('keeps alternate-screen programs untouched even with prompt marks', async () => {
+    const { sent, key, write } = await createSurface(MAC_UA, 'MacIntel');
+    write('\x1b[=5u');
+    write('\x1b]133;A\x1b\\');
+    write('\x1b[?1049h');
+    for (const name of ['Backspace', 'ArrowLeft', 'PageUp']) {
+      const chord = { key: name, code: name, keyCode: 0, metaKey: true };
+      expect(key('keydown', chord).defaultPrevented).toBe(false);
+      key('keyup', chord);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test('reads prompt marks from replayed history', async () => {
+    const { sent, key, terminal } = await createSurface(MAC_UA, 'MacIntel');
+    terminal.resetAndWrite('\x1b[=5u\x1b]133;A\x1b\\');
+    key('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    key('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, metaKey: true });
+    expect(sent).toEqual(['\x15']);
+  });
+});

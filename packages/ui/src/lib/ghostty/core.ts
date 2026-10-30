@@ -520,12 +520,17 @@ export class GhosttyTerminalCore {
     );
   }
 
-  supportsShellShortcuts(): boolean {
+  /**
+   * Alternate-screen programs keep their keys. Elsewhere the Kitty flags decide,
+   * except that a shell prompt announced with OSC 133 overrides them: fish 4.0+
+   * keeps the protocol on at its prompt.
+   */
+  supportsShellShortcuts(atShellPrompt = false): boolean {
     this.ensureActive();
     if (this.isAlternateScreen()) return false;
     // GHOSTTY_TERMINAL_DATA_KITTY_KEYBOARD_FLAGS is a uint8_t in the pinned ABI.
-    return this.runtime.call('ghostty_terminal_get', this.terminal, 8, this.scratch) === GHOSTTY_SUCCESS
-      && this.runtime.bytes(this.scratch, 1)[0] === 0;
+    if (this.runtime.call('ghostty_terminal_get', this.terminal, 8, this.scratch) !== GHOSTTY_SUCCESS) return false;
+    return this.runtime.bytes(this.scratch, 1)[0] === 0 || atShellPrompt;
   }
 
   /** macOS word editing for legacy prompts; application keyboard modes keep the original key. */
