@@ -1,0 +1,19 @@
+# Your own pull requests, merged in this order on top of upstream main.
+#
+#   <number>              merge it
+#   <number> union-docs   merge it, and when the only conflicts are markdown,
+#                         keep both sides (this repo's docs append paragraphs
+#                         after the same anchor). Read the file once after.
+#
+# A PR that still conflicts is skipped and reported; the rest of the build goes
+# on. Keep the list to what you want in the app you use today, not every PR.
+
+5399
+5514
+5545
+5557            # contains 5548, so 5548 is not listed on its own
+5561
+5740
+5754
+5767
+5863 union-docs # doc paragraph lands after the same anchor as 5514
