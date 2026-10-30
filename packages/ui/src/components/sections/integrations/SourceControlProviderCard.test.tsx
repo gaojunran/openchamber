@@ -142,7 +142,7 @@ describe('SourceControlProviderCard', () => {
     repositoryProviderBindingMutate: unexpected, authStart: unexpected, authComplete: unexpected,
     authDisconnect: unexpected, authSetCliDisabled: unexpected,
     changeRequestStatus: unexpected, changeRequestCreate: unexpected, changeRequestUpdate: unexpected,
-    changeRequestMerge: unexpected, changeRequestReady: unexpected, changeRequestComment: unexpected,
+    changeRequestMerge: unexpected, changeRequestReady: unexpected, changeRequestDraft: unexpected, changeRequestComment: unexpected,
     changeRequestStartThread: unexpected, changeRequestReplyToThread: unexpected, changeRequestResolveThread: unexpected,
     changeRequestReview: unexpected, issueComment: unexpected, changeRequestSetState: unexpected,
     issueSetState: unexpected, changeRequestSetLabels: unexpected, issueSetLabels: unexpected,

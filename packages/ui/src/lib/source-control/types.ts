@@ -262,6 +262,8 @@ export interface SourceControlCapabilities {
   issues: boolean;
   changeRequests: boolean;
   draftChangeRequests: boolean;
+  /** The host also turns an open change request back into a draft; absent means it cannot. */
+  draftConversion?: boolean;
   mergeChangeRequests: boolean;
   mergeMethods?: MergeMethod[];
   ci: boolean;
@@ -696,6 +698,9 @@ export interface SourceControlMergeMutationResult {
 export interface SourceControlReadyMutationResult {
   ready: boolean;
 }
+export interface SourceControlDraftMutationResult {
+  draft: boolean;
+}
 export interface SourceControlStateMutationResult {
   state: 'open' | 'closed';
 }
@@ -722,6 +727,8 @@ export interface MergeChangeRequestInput extends SourceControlMutationContext<So
 }
 
 export type ReadyChangeRequestInput = SourceControlMutationContext<SourceControlExistingMutationTarget>;
+/** A draft and a ready-for-review change request carry the same target; the route says which way. */
+export type DraftChangeRequestInput = SourceControlMutationContext<SourceControlExistingMutationTarget>;
 
 /** A comment on a change request, or on an issue (the target names its number). */
 export interface CommentInput extends SourceControlMutationContext<SourceControlExistingMutationTarget> {
