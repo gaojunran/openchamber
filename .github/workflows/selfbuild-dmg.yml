@@ -68,7 +68,7 @@ jobs:
             set_pairs="$(gh pr list --repo "$UPSTREAM" --author "$AUTHOR" --state open --limit 100 \
               --json number,headRefOid --jq 'sort_by(.number)|map("\(.number):\(.headRefOid)")|join(",")')"
           fi
-          skip="$(grep -vE '^\s*(#|$)' selfbuild/skip.txt 2>/dev/null | tr -d ' ' | sort -n | tr '\n' ',')"
+          skip="$({ grep -vE '^[[:space:]]*(#|$)' selfbuild/skip.txt 2>/dev/null || true; } | tr -d ' ' | sort -n | tr '\n' ',')"
           signature="$(printf '%s|%s|%s' "$set_desc" "$set_pairs" "$skip" | sha256sum | cut -c1-12)"
 
           echo "set      ${set_desc:-<none>}"

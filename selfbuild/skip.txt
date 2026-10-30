@@ -1,0 +1,5 @@
+# Pull requests to leave out of the build, one number per line.
+# Optional: an absent or empty file means every open PR is included.
+#
+# Example:
+#   5863
