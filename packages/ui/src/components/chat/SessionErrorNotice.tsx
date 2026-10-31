@@ -12,6 +12,7 @@ import { responseBodyOf, summarizeOpenCodeError } from '@/sync/session-error-log
 import { useDirectoryStore, useSessionStatus, useSessionStatusSnapshotReady } from '@/sync/sync-context';
 import { refetchSessionMessages, retryLastTurn } from '@/sync/session-actions';
 import { LongErrorText } from './LongErrorText';
+import { RetryTurnButton } from './RetryTurnButton';
 import { findRecordedTurnError, readLastMessageState, scheduleUnansweredRechecks, type LastMessageState } from './sessionErrorNoticeState';
 
 interface SessionErrorNoticeProps {
@@ -253,17 +254,11 @@ export const SessionErrorNotice: React.FC<SessionErrorNoticeProps> = ({ sessionI
           <Icon name="error-warning" className="size-3.5 shrink-0 text-[var(--status-error)]" />
           <span className="typography-meta font-medium text-foreground">{title}</span>
           {retryable ? (
-            <Button
-              variant="outline"
-              size="xs"
+            <RetryTurnButton
               onClick={() => { void handleRetry(); }}
               disabled={retrying}
-              aria-label={t('chat.sessionError.retry')}
-              title={t('chat.sessionError.retry')}
-              className="ms-auto shrink-0"
-            >
-              <Icon name="refresh" className="size-3.5" />
-            </Button>
+              className="ms-auto"
+            />
           ) : null}
         </div>
         <LongErrorText text={detail} buttonClassName="ms-[0.875rem]">

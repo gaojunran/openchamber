@@ -29,6 +29,7 @@ import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
 
 import { SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { LongErrorText } from '../LongErrorText';
+import { RetryTurnButton } from '../RetryTurnButton';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useChatSessionSelection } from '../chatColumnSession';
 import { useUIStore } from '@/stores/useUIStore';
@@ -2294,20 +2295,13 @@ const AssistantMessageBody = React.memo(({
                                             )}
                                         </LongErrorText>
                                     </div>
-                                    {onRetryTurn ? (
-                                        <Button
-                                            variant="outline"
-                                            size="xs"
-                                            onClick={onRetryTurn}
-                                            aria-label={t('chat.sessionError.retry')}
-                                            title={t('chat.sessionError.retry')}
-                                            className="shrink-0 self-start"
-                                        >
-                                            <Icon name="refresh" className="size-3.5" />
-                                        </Button>
-                                    ) : null}
                                 </div>
-                                {errorResponseBody ? <ErrorResponseDetails body={errorResponseBody} className="mt-1 ps-7" /> : null}
+                                {errorResponseBody || onRetryTurn ? (
+                                    <div className="mt-1 flex items-start gap-2 ps-7">
+                                        {errorResponseBody ? <ErrorResponseDetails body={errorResponseBody} /> : null}
+                                        {onRetryTurn ? <RetryTurnButton onClick={onRetryTurn} className="ms-auto" /> : null}
+                                    </div>
+                                ) : null}
                             </div>
                         </FadeInOnReveal>
                     )}
