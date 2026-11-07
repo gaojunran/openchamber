@@ -14,6 +14,15 @@ final class ShareSheetE2ETests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // Photos asks for notification permission on a fresh simulator. Answering it here
+        // keeps the default handler (which only taps "Allow") out of the way.
+        addUIInterruptionMonitor(withDescription: "Photos notification prompt") { alert in
+            for label in ["Don't Allow", "Allow"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
     }
 
     func testSharingAPhotoOpensADraftWithTheFileAttached() throws {
@@ -113,49 +122,34 @@ final class ShareSheetE2ETests: XCTestCase {
     private func openTheOnlyPhoto() {
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 60))
-        dismissSystemAlerts()
-        attachScreenshot(named: "photos-launch")
 
-        // iOS 18 opens on Collections (shelves), where nothing is a photo tile yet.
-        let library = photos.buttons["Library"].firstMatch
-        if library.waitForExistence(timeout: 15) {
-            library.tap()
+        // A fresh simulator opens Photos on Collections, which sits *below* the grid, and
+        // covers it with the notification prompt. An interaction while the prompt is up
+        // trips the interruption monitor; swiping back to the top then reveals the grid.
+        photos.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        let cell = photos.cells.firstMatch
+        for _ in 0..<5 {
+            if cell.exists { break }
+            photos.swipeDown()
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        attachScreenshot(named: "photos-library")
+
+        if cell.waitForExistence(timeout: 20) {
+            cell.tap()
+            return
         }
 
-        // Grid tiles are cells on most versions and images matching "Photo, …" on others.
         let tile = photos.descendants(matching: .any).matching(NSPredicate(
             format: "identifier BEGINSWITH 'Photo,' OR label BEGINSWITH 'Photo,'"
         )).firstMatch
-        if tile.waitForExistence(timeout: 20) {
+        if tile.waitForExistence(timeout: 10) {
             tile.tap()
-            return
-        }
-        let cell = photos.cells.firstMatch
-        if cell.waitForExistence(timeout: 10) {
-            cell.tap()
             return
         }
 
         attachScreenshot(named: "photos-no-tile")
         XCTFail("Photos exposes no photo tile: \(photos.debugDescription)")
-    }
-
-    /// A fresh simulator shows Photos' notification prompt, which swallows every tap.
-    private func dismissSystemAlerts() {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Don't Allow", "Allow", "OK"] {
-            let button = springboard.buttons[label]
-            if button.waitForExistence(timeout: 5) {
-                button.tap()
-            }
-        }
-        // The "what's new" sheet lives inside Photos itself.
-        for label in ["Continue", "Get Started", "Not Now", "Done"] {
-            let button = photos.buttons[label].firstMatch
-            if button.waitForExistence(timeout: 3) {
-                button.tap()
-            }
-        }
     }
 
     private func tapShare() {
