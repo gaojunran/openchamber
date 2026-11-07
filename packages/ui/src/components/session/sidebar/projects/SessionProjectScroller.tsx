@@ -10,7 +10,7 @@ import {
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { Button } from '@/components/ui/button';
-import { formatPathForDisplay } from '@/lib/utils';
+import { cn, formatPathForDisplay } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { sessionEvents } from '@/lib/sessionEvents';
@@ -337,7 +337,9 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
   const renderRow = React.useCallback((row: SessionSidebarRow): React.ReactNode => {
     if (row.kind === 'activity-header') {
       return sortableSection(row, <CrossfadeZoneHeader
-        className="sticky top-0 z-20 bg-sidebar"
+        // The touch sidebar sits on the editor's background rather than the
+        // sidebar surface, so its sticky header takes the list's own colour.
+        className={cn('sticky top-0 z-20', view.mobileVariant ? 'bg-background' : 'bg-sidebar')}
         data-sidebar-sticky-header="true"
       >
         <SessionSidebarActivityHeader

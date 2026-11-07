@@ -101,6 +101,29 @@ describe('SidebarHeader', () => {
     expect(document.querySelector('[aria-label="Display mode"]')).toBeNull();
   });
 
+  test('compact variant hides the shortcut hints', async () => {
+    await act(async () => root.render(
+      <I18nProvider>
+        <TooltipProvider>
+          <StatefulHeader {...baseProps} hideDirectoryControls searchMatchCount={0} />
+        </TooltipProvider>
+      </I18nProvider>,
+    ));
+    expect(document.body.textContent).not.toContain('Press Enter to search');
+    expect(document.body.textContent).not.toContain('Esc to clear');
+  });
+
+  test('compact variant keeps the match count while searching', async () => {
+    await act(async () => root.render(
+      <I18nProvider>
+        <TooltipProvider>
+          <StatefulHeader {...baseProps} hideDirectoryControls initialQuery="abc" searchMatchCount={3} />
+        </TooltipProvider>
+      </I18nProvider>,
+    ));
+    expect(document.body.textContent).toContain('3 matches');
+  });
+
   test('compact variant clears the search query with the clear button', async () => {
     await act(async () => root.render(
       <I18nProvider>
