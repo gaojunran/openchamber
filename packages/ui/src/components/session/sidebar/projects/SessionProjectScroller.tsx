@@ -111,6 +111,8 @@ export type SessionProjectScrollerView = {
   hideDirectoryControls: boolean;
   mobileVariant: boolean;
   alwaysShowActions: boolean;
+  /** VS Code keeps the grouped list but drops the divider the old header band used to justify. */
+  isVSCode: boolean;
   projectSortOrder: ProjectSortOrder;
 };
 
@@ -713,7 +715,7 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-            <SessionSidebarRows model={model.rowModel} scrollElement={scrollElement} pinnedRowIndexes={pinnedRowIndexes} renderRow={renderRow} onFirstVisibleIndexChange={handleFirstVisibleIndexChange} getStickyHeaderHeight={getPinnedZoneHeaderHeight} heldRowRef={heldRowRef} />
+            <SessionSidebarRows model={model.rowModel} scrollElement={scrollElement} pinnedRowIndexes={pinnedRowIndexes} renderRow={renderRow} onFirstVisibleIndexChange={handleFirstVisibleIndexChange} getStickyHeaderHeight={getPinnedZoneHeaderHeight} heldRowRef={heldRowRef} projectDivider={!view.isVSCode} />
           </SortableContext>
           {/* Dropped, the header is where it lands at once: no flight back. */}
           <DragOverlay dropAnimation={null}>{dragSource ? <RowDragPreview copy={dragSource} /> : null}</DragOverlay>

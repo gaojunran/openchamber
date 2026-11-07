@@ -1306,6 +1306,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     hideDirectoryControls: view.hideDirectoryControls,
     mobileVariant: view.mobileVariant,
     alwaysShowActions,
+    isVSCode: topology.isVSCode,
     projectSortOrder: view.projectSortOrder,
   }), [
     view.homeDirectory,
@@ -1313,6 +1314,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     view.hideDirectoryControls,
     view.mobileVariant,
     alwaysShowActions,
+    topology.isVSCode,
     view.projectSortOrder,
   ]);
   const scrollerActionSet = React.useMemo(() => ({
