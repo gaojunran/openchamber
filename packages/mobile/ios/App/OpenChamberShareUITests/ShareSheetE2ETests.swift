@@ -113,35 +113,59 @@ final class ShareSheetE2ETests: XCTestCase {
     private func openTheOnlyPhoto() {
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 60))
-        dismissOnboarding()
+        dismissSystemAlerts()
         attachScreenshot(named: "photos-launch")
 
+        // iOS 18 opens on Collections (shelves), where nothing is a photo tile yet.
+        let library = photos.buttons["Library"].firstMatch
+        if library.waitForExistence(timeout: 15) {
+            library.tap()
+        }
+
+        // Grid tiles are cells on most versions and images matching "Photo, …" on others.
+        let tile = photos.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH 'Photo,' OR label BEGINSWITH 'Photo,'"
+        )).firstMatch
+        if tile.waitForExistence(timeout: 20) {
+            tile.tap()
+            return
+        }
         let cell = photos.cells.firstMatch
-        if cell.waitForExistence(timeout: 30) {
+        if cell.waitForExistence(timeout: 10) {
             cell.tap()
             return
         }
 
-        // iOS 18 does not always expose the grid as cells; the top-left tile is where the
-        // library starts, so a tap there is the same user action either way.
-        photos.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)).tap()
-        attachScreenshot(named: "photos-after-tap")
+        attachScreenshot(named: "photos-no-tile")
+        XCTFail("Photos exposes no photo tile: \(photos.debugDescription)")
     }
 
-    /// A fresh simulator can open Photos on its "what's new" sheet, which hides the grid.
-    private func dismissOnboarding() {
+    /// A fresh simulator shows Photos' notification prompt, which swallows every tap.
+    private func dismissSystemAlerts() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for label in ["Don't Allow", "Allow", "OK"] {
+            let button = springboard.buttons[label]
+            if button.waitForExistence(timeout: 5) {
+                button.tap()
+            }
+        }
+        // The "what's new" sheet lives inside Photos itself.
         for label in ["Continue", "Get Started", "Not Now", "Done"] {
             let button = photos.buttons[label].firstMatch
-            if button.waitForExistence(timeout: 5) {
+            if button.waitForExistence(timeout: 3) {
                 button.tap()
             }
         }
     }
 
     private func tapShare() {
-        let byLabel = photos.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'share'")).firstMatch
-        if byLabel.waitForExistence(timeout: 30) {
-            byLabel.tap()
+        // Exact match: a "CONTAINS share" predicate also catches "Start Sharing" and
+        // "Shared Albums" in the library page, which navigate away from the viewer.
+        let share = photos.buttons.matching(NSPredicate(
+            format: "label == 'Share' OR identifier == 'share'"
+        )).firstMatch
+        if share.waitForExistence(timeout: 30) {
+            share.tap()
             return
         }
         // The photo viewer sometimes exposes the action behind the "more" bar button.
