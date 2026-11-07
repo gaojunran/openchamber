@@ -216,7 +216,8 @@ jobs:
           ls "$APP/public" 2>&1 | head -10
           xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP" || true
           echo "--- launch console (20s)"
-          timeout 20 xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" com.openchamber.app 2>&1 | head -80 || true
+          # macOS runners have no coreutils `timeout`.
+          ( xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" com.openchamber.app & CPID=$!; sleep 20; kill "$CPID" 2>/dev/null ) 2>&1 | head -80 || true
           xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot "$RUNNER_TEMP/launch.png" || true
           echo "--- app log"
           xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \

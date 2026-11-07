@@ -57,32 +57,55 @@ final class ShareSheetE2ETests: XCTestCase {
         // The manual form starts collapsed because iOS supports QR pairing; the toggle is
         // part of the page, so opening it is the same path a user takes.
         let toggle = app.buttons["Connect by address"].firstMatch
-        if toggle.waitForExistence(timeout: 60) {
+        let urlField = app.textFields["Server URL"].firstMatch
+        let welcome = app.staticTexts["Connect to OpenChamber"].firstMatch
+
+        // A saved connection from an earlier run auto-connects on launch.
+        guard welcome.waitForExistence(timeout: 90) else { return }
+        XCTAssertTrue(urlField.waitForExistence(timeout: 60), "the connection screen did not appear")
+
+        // The collapsed row keeps its inputs in the DOM, so hittability — not existence —
+        // is what tells whether the form is open.
+        if !urlField.isHittable, toggle.waitForExistence(timeout: 60) {
             toggle.tap()
         }
+        let opened = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: urlField)
+        XCTAssertEqual(XCTWaiter().wait(for: [opened], timeout: 30), .completed, "the manual form did not open")
 
-        let urlField = app.textFields["Server URL"].firstMatch
-        XCTAssertTrue(
-            urlField.waitForExistence(timeout: 120),
-            "the connection screen did not appear:\n\(app.debugDescription)"
-        )
         urlField.tap()
         urlField.typeText(serverURL)
-
-        let connect = app.buttons["Connect"].firstMatch
-        XCTAssertTrue(connect.exists, "no Connect button:\n\(app.debugDescription)")
-        connect.tap()
-        attachScreenshot(named: "0-connecting")
+        attachScreenshot(named: "0-url-entered")
+        submitConnection()
 
         // The welcome screen going away is the only signal that works whatever the sessions
         // list looks like.
-        let welcome = app.staticTexts["Connect to OpenChamber"].firstMatch
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: welcome)
         XCTAssertEqual(
             XCTWaiter().wait(for: [gone], timeout: 180),
             .completed,
             "the app never left the connection screen:\n\(app.debugDescription)"
         )
+    }
+
+    /// On a 375x667 screen the software keyboard covers the Connect button, and the field sits
+    /// in a real form, so Return submits it. Tapping Connect is the fallback once the keyboard
+    /// is out of the way.
+    private func submitConnection() {
+        if app.keyboards.element.exists {
+            app.typeText("\n")
+        }
+        let welcome = app.staticTexts["Connect to OpenChamber"].firstMatch
+        if waitUntilGone(welcome, timeout: 30) { return }
+
+        let connect = app.buttons["Connect"].firstMatch
+        if connect.waitForExistence(timeout: 5), connect.isHittable {
+            connect.tap()
+        }
+    }
+
+    private func waitUntilGone(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element)
+        return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
     }
 
     // MARK: - Photos side
