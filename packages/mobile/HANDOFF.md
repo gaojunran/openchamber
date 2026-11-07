@@ -226,6 +226,9 @@ TestFlight / Play internal testing:
   (`com.openchamber.app`, `.OpenChamberWidget`, `.OpenChamberNotificationService`,
   `.OpenChamberShare`), each enabled for the **App Group** and (app) **Push**.
 - Signing certificate + provisioning profiles for all four targets (extensions need their own).
+  `mobile-release.yml` installs them as `IOS_APP_PROFILE_*`, `IOS_WIDGET_PROFILE_*`,
+  `IOS_NSE_PROFILE_*` and `IOS_SHARE_PROFILE_*` (`_BASE64` + `_NAME` pairs); the archive fails
+  when one target's profile is missing.
 - App Store Connect API key for non-interactive TestFlight upload (`xcodebuild archive` +
   `notarytool`/`altool`, or fastlane `gym`+`pilot`).
 - Runner: macOS with the same Xcode as `DEVELOPER_DIR`.

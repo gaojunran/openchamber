@@ -73,10 +73,13 @@ final class ShareViewController: UIViewController {
     }
 
     private func stage(_ provider: NSItemProvider, in directory: URL) async -> ShareInbox.Record {
+        // Read before the callback: capturing the provider inside it is a Sendable warning,
+        // and the name never changes.
+        let fallbackName = provider.suggestedName ?? "file"
         guard let type = Self.fileType(of: provider) else {
             return ShareInbox.Record(
                 id: "",
-                name: provider.suggestedName ?? "file",
+                name: fallbackName,
                 mimeType: "application/octet-stream",
                 size: 0,
                 rejected: "unsupported-type"
@@ -90,7 +93,7 @@ final class ShareViewController: UIViewController {
                 guard let url else {
                     continuation.resume(returning: ShareInbox.Record(
                         id: "",
-                        name: provider.suggestedName ?? "file",
+                        name: fallbackName,
                         mimeType: type.preferredMIMEType ?? "application/octet-stream",
                         size: 0,
                         rejected: "unreadable"
@@ -99,7 +102,7 @@ final class ShareViewController: UIViewController {
                 }
 
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-                let name = url.lastPathComponent.isEmpty ? (provider.suggestedName ?? "file") : url.lastPathComponent
+                let name = url.lastPathComponent.isEmpty ? fallbackName : url.lastPathComponent
                 let mimeType = type.preferredMIMEType ?? "application/octet-stream"
                 guard size > 0 else {
                     continuation.resume(returning: ShareInbox.Record(
