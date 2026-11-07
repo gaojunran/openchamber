@@ -140,11 +140,21 @@ final class ShareSheetE2ETests: XCTestCase {
             return
         }
 
-        let tile = photos.descendants(matching: .any).matching(NSPredicate(
+        // Individual tiles are images on most versions; the grid container itself is an
+        // accessibility group labelled with every photo it holds, so it is only a fallback.
+        let tile = photos.images.matching(NSPredicate(
             format: "identifier BEGINSWITH 'Photo,' OR label BEGINSWITH 'Photo,'"
         )).firstMatch
-        if tile.waitForExistence(timeout: 10) {
+        if tile.waitForExistence(timeout: 10), tile.isHittable {
             tile.tap()
+            return
+        }
+
+        let grid = photos.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH 'PXGGridLayout'"
+        )).firstMatch
+        if grid.waitForExistence(timeout: 15) {
+            grid.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.06)).tap()
             return
         }
 
