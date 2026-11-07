@@ -25,7 +25,7 @@ jobs:
       - name: Assert the quick actions reached the bundle
         run: |
           set -euo pipefail
-          APP=$(find packages/mobile/ios -name 'App.app' -maxdepth 6 -type d | head -1)
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -name 'App.app' -type d -path '*Debug-iphonesimulator*' | head -1)
           echo "app: $APP"
           test -n "$APP"
           plutil -p "$APP/Info.plist" | grep -A2 UIApplicationShortcutItems
