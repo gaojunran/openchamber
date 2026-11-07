@@ -190,7 +190,24 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
-          python3 -c "import base64;open('share-e2e.png','wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='))"
+          # A 1x1 pixel can be rejected by the Photos importer, so seed a real picture.
+          python3 - <<'PY'
+          import struct, zlib
+
+          w = h = 240
+          raw = b''.join(
+              b'\x00' + b''.join(bytes((x * 255 // w, y * 255 // h, 128)) for x in range(w))
+              for y in range(h)
+          )
+          def chunk(tag, data):
+              body = tag + data
+              return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
+          png = (b'\x89PNG\r\n\x1a\n'
+                 + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+                 + chunk(b'IDAT', zlib.compress(raw, 9))
+                 + chunk(b'IEND', b''))
+          open('share-e2e.png', 'wb').write(png)
+          PY
           xcrun simctl addmedia "$UDID" share-e2e.png
           echo "seeded a photo into $UDID"
 

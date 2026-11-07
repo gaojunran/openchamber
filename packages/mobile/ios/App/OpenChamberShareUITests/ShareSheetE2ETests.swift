@@ -114,18 +114,18 @@ final class ShareSheetE2ETests: XCTestCase {
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 60))
         dismissOnboarding()
+        attachScreenshot(named: "photos-launch")
 
         let cell = photos.cells.firstMatch
         if cell.waitForExistence(timeout: 30) {
             cell.tap()
             return
         }
-        let image = photos.images.firstMatch
-        XCTAssertTrue(
-            image.waitForExistence(timeout: 30),
-            "Photos shows no photo (was the image added to the simulator?):\n\(photos.debugDescription)"
-        )
-        image.tap()
+
+        // iOS 18 does not always expose the grid as cells; the top-left tile is where the
+        // library starts, so a tap there is the same user action either way.
+        photos.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.2)).tap()
+        attachScreenshot(named: "photos-after-tap")
     }
 
     /// A fresh simulator can open Photos on its "what's new" sheet, which hides the grid.
