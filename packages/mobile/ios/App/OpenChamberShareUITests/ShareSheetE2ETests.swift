@@ -41,7 +41,15 @@ final class ShareSheetE2ETests: XCTestCase {
         )
         entry.tap()
 
+        // The extension stages the file in about a second; the pause is for its own alert,
+        // which is the only place a refusal says why.
+        Thread.sleep(forTimeInterval: 6)
         attachScreenshot(named: "2-extension-running")
+        let extensionAlert = photos.alerts.firstMatch
+        if extensionAlert.exists {
+            let texts = extensionAlert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " / ")
+            print("E2E extension alert: \(extensionAlert.label) — \(texts)")
+        }
         // A share extension cannot reliably launch its host app — `extensionContext.open`
         // only works for Today and iMessage extensions — so the file may wait in the inbox
         // until the user comes back. Record which happened, then act like that user.

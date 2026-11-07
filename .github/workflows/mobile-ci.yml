@@ -220,7 +220,8 @@ jobs:
             -scheme OpenChamberE2E \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath "$RUNNER_TEMP/e2e.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="-" \
             2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Inspect the share inbox
@@ -228,6 +229,11 @@ jobs:
         run: |
           set -uo pipefail
           UDID="${{ steps.sim.outputs.udid }}"
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          echo "--- app entitlements"
+          codesign -d --entitlements - "$APP" 2>&1 | head -25 || true
+          echo "--- share extension entitlements"
+          codesign -d --entitlements - "$APP/PlugIns/OpenChamberShare.appex" 2>&1 | head -25 || true
           echo "--- app group containers"
           for GROUP in $(xcrun simctl get_app_container "$UDID" com.openchamber.app groups 2>/dev/null); do
             echo "== $GROUP"
@@ -245,6 +251,7 @@ jobs:
         if: always()
         run: |
           set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
           APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
           echo "app: $APP"
           echo "--- bundled web assets"

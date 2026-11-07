@@ -79,6 +79,7 @@ final class ShareViewController: UIViewController {
         default:
             message = "OpenChamber couldn't receive this file."
         }
+        NSLog("[ShareInbox] failed %@", String(describing: error))
         let alert = UIAlertController(title: "OpenChamber", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
             self?.extensionContext?.completeRequest(returningItems: nil)
