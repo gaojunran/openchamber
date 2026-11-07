@@ -108,3 +108,94 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:NSExtensionActivationRule' "$APPEX/Info.plist"
           echo "--- embedded extensions"
           ls "$APP/PlugIns"
+
+  share-sheet-e2e:
+    name: Share a photo through the real share sheet
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build the app for the simulator, keeping the simulator Podfile
+        env:
+          IOS_SIM_BUILD_KEEP_PODS: '1'
+        run: bun run mobile:build:ios:simulator
+
+      - name: Start a server for the app to connect to
+        run: |
+          set -euo pipefail
+          node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \
+            > "$RUNNER_TEMP/openchamber-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:4123/; then
+              echo "server answered after ${attempt}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/openchamber-server.log"
+          exit 1
+
+      - name: Pick a simulator and seed a photo
+        id: sim
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, subprocess, sys
+
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              found = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+          for runtime in sorted(data["devices"], key=version, reverse=True):
+              for device in data["devices"][runtime]:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      print(f"udid={device['udid']}")
+                      print(f"picked {device['name']} on {runtime}", file=sys.stderr)
+                      raise SystemExit(0)
+          raise SystemExit("no available iPhone simulator")
+          PY
+          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          python3 -c "import base64;open('share-e2e.png','wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='))"
+          xcrun simctl addmedia "${{ steps.sim.outputs.udid }}" share-e2e.png
+
+      - name: Run the share-sheet test
+        working-directory: packages/mobile
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace ios/App/App.xcworkspace \
+            -scheme OpenChamberE2E \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath "$RUNNER_TEMP/e2e.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Export the screenshots
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/e2e.xcresult" \
+            --output-path "$RUNNER_TEMP/e2e-attachments" || true
+          ls -la "$RUNNER_TEMP/e2e-attachments" || true
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: share-sheet-e2e
+          path: |
+            ${{ runner.temp }}/e2e-attachments
+            ${{ runner.temp }}/e2e.log
+            ${{ runner.temp }}/openchamber-server.log
+          if-no-files-found: warn

@@ -113,6 +113,15 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   OpenChamberShareTests -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO`.
   The tests pass a temporary container instead of the App Group, because the test runner has no
   entitlement for it.
+- **Share-sheet end-to-end** — `OpenChamberShareUITests` drives the real panel (Photos → share →
+  OpenChamber) and then asserts the app came forward and the draft carries an image attachment,
+  with screenshots attached to the result bundle. It needs a server
+  (`node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1`) and a photo in
+  the simulator (`xcrun simctl addmedia <udid> photo.png`). It must run against the MLKit-less
+  simulator Pods, so build once with `IOS_SIM_BUILD_KEEP_PODS=1 bun run
+  mobile:build:ios:simulator`, then `xcodebuild test -workspace ios/App/App.xcworkspace -scheme
+  OpenChamberE2E -destination 'id=<udid>' CODE_SIGNING_ALLOWED=NO`. No signing identity or
+  developer account is involved: the simulator does not verify entitlements.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
 - **iOS widgets + Control Center + Notification Service Extension** — WidgetKit extension
