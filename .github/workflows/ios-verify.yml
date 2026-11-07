@@ -1,0 +1,79 @@
+name: iOS share extension compile
+
+# TEMPORARY verification workflow for the share-sheet intake change. It exists only on the
+# verify/* branch: it compiles the new target with real Xcode and asserts that the built app
+# embeds the extension, so a host without Xcode can still get a compile signal. Remove it
+# before opening the real pull request.
+
+on:
+  push:
+    branches: ['verify/**']
+  workflow_dispatch:
+
+jobs:
+  extension-target:
+    name: Compile the OpenChamberShare target
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Compile the share extension without pods or signing
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project App.xcodeproj \
+            -target OpenChamberShare \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tail -120
+
+  full-app:
+    name: Build the app and assert the extension is embedded
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build the iOS simulator app
+        run: bun run mobile:build:ios:simulator
+
+      - name: Assert the extension is embedded with its activation rule
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          test -n "$APP"
+          echo "app: $APP"
+          APPEX="$APP/PlugIns/OpenChamberShare.appex"
+          test -d "$APPEX"
+          echo "--- extension Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:NSExtensionActivationRule' "$APPEX/Info.plist"
+          echo "--- embedded extensions"
+          ls "$APP/PlugIns"
+
+      - name: Upload build log artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-product
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/Build/Products/Debug-iphonesimulator/App.app/PlugIns
+          if-no-files-found: warn
+          retention-days: 3

@@ -101,6 +101,11 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **Secure storage** — `@aparajita/capacitor-secure-storage` for connection tokens.
 - **Deep links** — `openchamber://` URL scheme; a reusable intent vocabulary (`apps/deepLinks.ts`)
   used by notification taps, widgets, and Control Center. Cold-launch intents are stashed.
+- **Share-sheet file intake** — the `OpenChamberShare` extension accepts files, images and movies
+  from the iOS share sheet, stages them in the App Group inbox and opens the app. The app's
+  `SharedFiles` plugin hands them to the page, which opens a new session draft with them
+  attached and unsent. More than eight files, a file over 24 MB, or a batch over 32 MB is
+  reported by name instead of attached.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
 - **iOS widgets + Control Center + Notification Service Extension** — WidgetKit extension
@@ -128,9 +133,11 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 
 ### iOS (`ios/App`)
 
-- Extensions: `OpenChamberWidget` (WidgetKit, deployment 17.0) and `OpenChamberNotificationService`
-  (NSE, 15.5), both hand-wired into `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
-- App Group `group.com.openchamber.app` in all three targets' entitlements (app + widget + NSE).
+- Extensions: `OpenChamberWidget` (WidgetKit, deployment 17.0), `OpenChamberNotificationService`
+  (NSE, 15.5) and `OpenChamberShare` (share services, 15.5), all hand-wired into
+  `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
+- App Group `group.com.openchamber.app` in all four targets' entitlements (app + widget + NSE +
+  share extension).
 - `Info.plist`: `CFBundleURLTypes` scheme `openchamber`, `NSCameraUsageDescription`.
 - Push entitlement (aps-environment) required.
 - APNs `mutable-content: 1` (set server/relay side) wakes the NSE to refresh widgets.
@@ -172,6 +179,11 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **User scripts go in `capacitorDidLoad()`.** Capacitor replaces the `userContentController` after
   `webViewConfiguration(for:)`, silently dropping scripts added there (`BridgeViewController` in
   `AppDelegate.swift`).
+- **A share extension cannot reliably open its host app.** `UIApplication.shared` is unavailable
+  there and `extensionContext.open` only works for the Today extension point, so
+  `ShareViewController` tries `extensionContext.open` first and then walks the responder chain
+  for a `UIApplication` (the same fallback AFFiNE and others ship). When both fail the staged
+  file stays in the App Group inbox and the plugin takes it the next time the app becomes active.
 - **`embedded.mobileprovision` decodes as `.isoLatin1`.** It is a binary CMS envelope around a plist;
   `.ascii`/`.utf8` return nil and the APNs environment silently falls back. APNs delivery is grouped
   per token by the environment it registered with (Xcode build → sandbox, TestFlight/App Store →
@@ -210,10 +222,10 @@ TestFlight / Play internal testing:
 
 ### iOS
 
-- Apple Developer account; App IDs for the app **and** both extensions
-  (`com.openchamber.app`, `.OpenChamberWidget`, `.OpenChamberNotificationService`), each enabled for
-  the **App Group** and (app) **Push**.
-- Signing certificate + provisioning profiles for all three targets (extensions need their own).
+- Apple Developer account; App IDs for the app **and** all three extensions
+  (`com.openchamber.app`, `.OpenChamberWidget`, `.OpenChamberNotificationService`,
+  `.OpenChamberShare`), each enabled for the **App Group** and (app) **Push**.
+- Signing certificate + provisioning profiles for all four targets (extensions need their own).
 - App Store Connect API key for non-interactive TestFlight upload (`xcodebuild archive` +
   `notarytool`/`altool`, or fastlane `gym`+`pilot`).
 - Runner: macOS with the same Xcode as `DEVELOPER_DIR`.
