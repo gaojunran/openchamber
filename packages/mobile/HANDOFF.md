@@ -120,8 +120,13 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   the simulator (`xcrun simctl addmedia <udid> photo.png`). It must run against the MLKit-less
   simulator Pods, so build once with `IOS_SIM_BUILD_KEEP_PODS=1 bun run
   mobile:build:ios:simulator`, then `xcodebuild test -workspace ios/App/App.xcworkspace -scheme
-  OpenChamberE2E -destination 'id=<udid>' CODE_SIGNING_ALLOWED=NO`. No signing identity or
-  developer account is involved: the simulator does not verify entitlements.
+  OpenChamberE2E -destination 'id=<udid>' CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`.
+  **The ad-hoc identity is required**: without it nothing is signed, no entitlements are embedded,
+  `containerURL(forSecurityApplicationGroupIdentifier:)` returns nil, and the extension refuses the
+  file before staging it (`[ShareInbox] failed`). No developer account or provisioning profile is
+  involved; the simulator does not verify entitlements, it only needs them present. `codesign -d
+  --entitlements - App.app` and `simctl get_app_container <udid> com.openchamber.app groups` are the
+  two commands that tell whether the hand-off can work at all.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
 - **iOS widgets + Control Center + Notification Service Extension** — WidgetKit extension
@@ -198,7 +203,8 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **A share extension cannot reliably open its host app.** `UIApplication.shared` is unavailable
   there and `extensionContext.open` only works for the Today extension point, so
   `ShareViewController` tries `extensionContext.open` first and then walks the responder chain
-  for a `UIApplication` (the same fallback AFFiNE and others ship). When both fail the staged
+  for a `UIApplication` (the same fallback AFFiNE and others ship). On the simulator with ad-hoc
+  signing the app does come forward, but do not rely on it on a device: when both fail the staged
   file stays in the App Group inbox and the plugin takes it the next time the app becomes active.
 - **`embedded.mobileprovision` decodes as `.isoLatin1`.** It is a binary CMS envelope around a plist;
   `.ascii`/`.utf8` return nil and the APNs environment silently falls back. APNs delivery is grouped
