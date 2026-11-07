@@ -154,25 +154,45 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          # A step cannot read its own outputs, so the UDID travels in a variable here
+          # and as the step output only for the later steps.
+          UDID=$(python3 - <<'PY'
           import json, re, subprocess, sys
+
+          # The runner can carry runtimes newer than the selected Xcode's SDK, so prefer the
+          # newest iPhone runtime the SDK actually supports.
+          sdk = subprocess.check_output(["xcodebuild", "-version", "-sdk", "iphonesimulator"], text=True)
+          found = re.search(r"iOS (\d+)\.(\d+)", sdk)
+          sdk_major = int(found.group(1)) if found else 999
+          print(sdk.strip().splitlines()[-1], file=sys.stderr)
 
           data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
           def version(runtime):
               found = re.search(r"iOS-(\d+)-(\d+)", runtime)
               return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
-          for runtime in sorted(data["devices"], key=version, reverse=True):
-              for device in data["devices"][runtime]:
+
+          candidates = []
+          for runtime, devices in data["devices"].items():
+              if not version(runtime)[0]:
+                  continue
+              for device in devices:
                   if device.get("isAvailable") and device["name"].startswith("iPhone"):
-                      print(f"udid={device['udid']}")
-                      print(f"picked {device['name']} on {runtime}", file=sys.stderr)
-                      raise SystemExit(0)
-          raise SystemExit("no available iPhone simulator")
+                      candidates.append((version(runtime), device["name"], device["udid"], runtime))
+          if not candidates:
+              raise SystemExit("no available iPhone simulator")
+          pool = [entry for entry in candidates if entry[0][0] <= sdk_major] or candidates
+          pool.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+          version_picked, name, udid, runtime = pool[0]
+          print(f"picked {name} on {runtime}", file=sys.stderr)
+          print(udid)
           PY
-          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
-          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          )
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
           python3 -c "import base64;open('share-e2e.png','wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='))"
-          xcrun simctl addmedia "${{ steps.sim.outputs.udid }}" share-e2e.png
+          xcrun simctl addmedia "$UDID" share-e2e.png
+          echo "seeded a photo into $UDID"
 
       - name: Run the share-sheet test
         working-directory: packages/mobile
