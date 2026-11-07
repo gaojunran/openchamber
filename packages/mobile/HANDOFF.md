@@ -163,7 +163,12 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
 - App Group `group.com.openchamber.app` in all four targets' entitlements (app + widget + NSE +
   share extension).
-- `Info.plist`: `CFBundleURLTypes` scheme `openchamber`, `NSCameraUsageDescription`.
+- `Info.plist`: `CFBundleURLTypes` scheme `openchamber`, `NSCameraUsageDescription`,
+  `UIApplicationShortcutItems` (long-press the icon: *New session*, *Needs attention*). Each quick
+  action carries the `openchamber://` link it opens in `UIApplicationShortcutItemUserInfo`, and
+  `SceneDelegate` hands it to Capacitor as a URL — a cold launch arrives through
+  `connectionOptions.shortcutItem`, a running app through `performActionFor` — so the routes stay
+  in the web layer's vocabulary and a new action is a plist entry.
 - Push entitlement (aps-environment) required.
 - APNs `mutable-content: 1` (set server/relay side) wakes the NSE to refresh widgets.
 
