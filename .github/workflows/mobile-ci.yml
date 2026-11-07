@@ -240,6 +240,9 @@ jobs:
           xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \
             --predicate 'processImagePath CONTAINS "App.app/" OR subsystem CONTAINS "com.apple.WebKit"' 2>&1 | tail -80 || true
 
+          echo "--- registered share extensions"
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" pluginkit -m -v -p com.apple.share-services 2>&1 | head -30 || true
+
       - name: Export the screenshots
         if: always()
         run: |
