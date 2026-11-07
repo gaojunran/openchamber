@@ -1,5 +1,9 @@
 name: Mobile Smoke Build
 
+# TEMPORARY verify-branch rewrite: this run exists to compile the share-sheet intake on a
+# GitHub-hosted macOS runner, because the fork has no Blacksmith runners. Revert to the
+# upstream version before opening the pull request.
+
 on:
   workflow_dispatch:
 
@@ -8,53 +12,278 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  android-debug:
-    name: Android debug APK
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+  share-extension:
+    name: Compile the OpenChamberShare target
+    runs-on: macos-15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Show Xcode version
+        run: xcodebuild -version
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Compile the share extension without pods or signing
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project App.xcodeproj \
+            -target OpenChamberShare \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tail -150
+
+  native-tests:
+    name: Run the inbox and staging tests on a simulator
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, subprocess, sys
+
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              found = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+          for runtime in sorted(data["devices"], key=version, reverse=True):
+              for device in data["devices"][runtime]:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      print(f"udid={device['udid']}")
+                      print(f"picked {device['name']} on {runtime}", file=sys.stderr)
+                      raise SystemExit(0)
+          raise SystemExit("no available iPhone simulator")
+          PY
+
+      - name: Run the tests
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project App.xcodeproj \
+            -scheme OpenChamberShareTests \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -250
+
+  full-app:
+    name: Build the app and assert the extension is embedded
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 21
 
       - name: Install dependencies
         run: bun install
 
-      - name: Lint mobile package
-        run: bun run lint:mobile
+      - name: Build the iOS simulator app
+        run: bun run mobile:build:ios:simulator
 
-      - name: Build Android debug APK
-        run: bun run mobile:build:android:debug
+      - name: Assert the extension is embedded with its activation rule
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          test -n "$APP"
+          echo "app: $APP"
+          APPEX="$APP/PlugIns/OpenChamberShare.appex"
+          test -d "$APPEX"
+          echo "--- extension Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:NSExtensionActivationRule' "$APPEX/Info.plist"
+          echo "--- embedded extensions"
+          ls "$APP/PlugIns"
 
-      - name: Upload Android debug APK
+  share-sheet-e2e:
+    name: Share a photo through the real share sheet
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install opencode, which the server needs to serve
+        run: |
+          npm install -g "@opencode/cli@$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
+          opencode --version
+
+      - name: Build the app for the simulator, keeping the simulator Podfile
+        env:
+          IOS_SIM_BUILD_KEEP_PODS: '1'
+        run: bun run mobile:build:ios:simulator
+
+      - name: Start a server for the app to connect to
+        run: |
+          set -euo pipefail
+          node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \
+            > "$RUNNER_TEMP/openchamber-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:4123/health; then
+              echo "server answered after $((attempt * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/openchamber-server.log"
+          exit 1
+
+      - name: Pick a simulator and seed a photo
+        id: sim
+        run: |
+          set -euo pipefail
+          # A step cannot read its own outputs, so the UDID travels in a variable here
+          # and as the step output only for the later steps.
+          UDID=$(python3 - <<'PY'
+          import json, re, subprocess, sys
+
+          # The runner can carry runtimes newer than the selected Xcode's SDK, so prefer the
+          # newest iPhone runtime the SDK actually supports.
+          sdk = subprocess.check_output(["xcodebuild", "-version", "-sdk", "iphonesimulator"], text=True)
+          found = re.search(r"iOS (\d+)\.(\d+)", sdk)
+          sdk_major = int(found.group(1)) if found else 999
+          print(sdk.strip().splitlines()[-1], file=sys.stderr)
+
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              found = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+
+          candidates = []
+          for runtime, devices in data["devices"].items():
+              if not version(runtime)[0]:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      candidates.append((version(runtime), device["name"], device["udid"], runtime))
+          if not candidates:
+              raise SystemExit("no available iPhone simulator")
+          pool = [entry for entry in candidates if entry[0][0] <= sdk_major] or candidates
+          pool.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+          version_picked, name, udid, runtime = pool[0]
+          print(f"picked {name} on {runtime}", file=sys.stderr)
+          print(udid)
+          PY
+          )
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          # A 1x1 pixel can be rejected by the Photos importer, so seed a real picture.
+          python3 - <<'PY'
+          import struct, zlib
+
+          w = h = 240
+          raw = b''.join(
+              b'\x00' + b''.join(bytes((x * 255 // w, y * 255 // h, 128)) for x in range(w))
+              for y in range(h)
+          )
+          def chunk(tag, data):
+              body = tag + data
+              return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
+          png = (b'\x89PNG\r\n\x1a\n'
+                 + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+                 + chunk(b'IDAT', zlib.compress(raw, 9))
+                 + chunk(b'IEND', b''))
+          open('share-e2e.png', 'wb').write(png)
+          PY
+          xcrun simctl addmedia "$UDID" share-e2e.png
+          echo "seeded a photo into $UDID"
+
+      - name: Run the share-sheet test
+        working-directory: packages/mobile
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace ios/App/App.xcworkspace \
+            -scheme OpenChamberE2E \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath "$RUNNER_TEMP/e2e.xcresult" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="-" \
+            2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Inspect the share inbox
+        if: always()
+        run: |
+          set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          echo "--- app entitlements"
+          codesign -d --entitlements - "$APP" 2>&1 | head -25 || true
+          echo "--- share extension entitlements"
+          codesign -d --entitlements - "$APP/PlugIns/OpenChamberShare.appex" 2>&1 | head -25 || true
+          echo "--- app group containers"
+          for GROUP in $(xcrun simctl get_app_container "$UDID" com.openchamber.app groups 2>/dev/null); do
+            echo "== $GROUP"
+            find "$GROUP" -maxdepth 2 -print 2>&1 | head -20
+            if [ -f "$GROUP/SharedInbox/manifest.json" ]; then
+              cat "$GROUP/SharedInbox/manifest.json"
+              echo
+            fi
+          done || true
+          echo "--- inbox log"
+          xcrun simctl spawn "$UDID" log show --last 30m --style compact \
+            --predicate 'eventMessage CONTAINS "[ShareInbox]"' 2>&1 | tail -40 || true
+
+      - name: Probe the app launch
+        if: always()
+        run: |
+          set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          echo "app: $APP"
+          echo "--- bundled web assets"
+          ls "$APP/public" 2>&1 | head -10
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP" || true
+          echo "--- launch console (20s)"
+          # macOS runners have no coreutils `timeout`.
+          ( xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" com.openchamber.app & CPID=$!; sleep 20; kill "$CPID" 2>/dev/null ) 2>&1 | head -80 || true
+          xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot "$RUNNER_TEMP/launch.png" || true
+          echo "--- app log"
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 30m --style compact \
+            --predicate 'processImagePath CONTAINS "App.app/" OR subsystem CONTAINS "com.apple.WebKit"' 2>&1 | tail -80 || true
+
+          echo "--- registered share extensions"
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" pluginkit -m -v -p com.apple.share-services 2>&1 | head -30 || true
+
+      - name: Export the screenshots
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/e2e.xcresult" \
+            --output-path "$RUNNER_TEMP/e2e-attachments" || true
+          ls -la "$RUNNER_TEMP/e2e-attachments" || true
+
+      - name: Upload the evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: openchamber-android-debug-apk
-          path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-  ios-simulator:
-    name: iOS simulator app
-    runs-on: blacksmith-6vcpu-macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Build iOS simulator app
-        run: bun run mobile:build:ios:simulator
+          name: share-sheet-e2e
+          path: |
+            ${{ runner.temp }}/e2e-attachments
+            ${{ runner.temp }}/e2e.log
+            ${{ runner.temp }}/openchamber-server.log
+            ${{ runner.temp }}/launch.png
+          if-no-files-found: warn
