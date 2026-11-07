@@ -57,7 +57,7 @@ final class ShareStagingTests: XCTestCase {
         XCTAssertNil(record.rejected)
         XCTAssertEqual(record.mimeType, "image/png")
         XCTAssertEqual(record.size, pngBytes.count)
-        XCTAssertEqual(record.name, source.lastPathComponent)
+        XCTAssertEqual(record.name, "photo.png", "the provider names its temporary copy after the shared file")
         XCTAssertFalse(record.id.isEmpty)
         let staged = try Data(contentsOf: inbox.appendingPathComponent(record.id))
         XCTAssertEqual(staged, pngBytes, "the copy must survive the temporary file being deleted")
