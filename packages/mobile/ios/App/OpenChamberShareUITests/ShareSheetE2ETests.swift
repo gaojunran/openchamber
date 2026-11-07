@@ -42,10 +42,15 @@ final class ShareSheetE2ETests: XCTestCase {
         entry.tap()
 
         attachScreenshot(named: "2-extension-running")
-        XCTAssertTrue(
-            app.wait(for: .runningForeground, timeout: 90),
-            "the share did not bring OpenChamber forward (the app stayed in the background)"
-        )
+        // A share extension cannot reliably launch its host app — `extensionContext.open`
+        // only works for Today and iMessage extensions — so the file may wait in the inbox
+        // until the user comes back. Record which happened, then act like that user.
+        let cameForward = app.wait(for: .runningForeground, timeout: 45)
+        print("E2E extension brought the app forward: \(cameForward)")
+        if !cameForward {
+            app.activate()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 60), "the app did not come back")
+        }
 
         // The staged name comes from the provider, not from us (Photos names its own copies),
         // so the assertion is that an image attachment is on the draft, and the label is
@@ -123,43 +128,37 @@ final class ShareSheetE2ETests: XCTestCase {
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 60))
 
-        // A fresh simulator opens Photos on Collections, which sits *below* the grid, and
-        // covers it with the notification prompt. An interaction while the prompt is up
-        // trips the interruption monitor; swiping back to the top then reveals the grid.
-        photos.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
-        let cell = photos.cells.firstMatch
-        for _ in 0..<5 {
-            if cell.exists { break }
-            photos.swipeDown()
-            Thread.sleep(forTimeInterval: 1.5)
+        // A fresh simulator covers the library with the "What's New in Photos" sheet and a
+        // notification prompt; until both are answered nothing behind them is tappable.
+        let whatsNew = photos.buttons["Continue"].firstMatch
+        if whatsNew.waitForExistence(timeout: 25) {
+            whatsNew.tap()
         }
+        photos.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
         attachScreenshot(named: "photos-library")
 
-        if cell.waitForExistence(timeout: 20) {
-            cell.tap()
-            return
-        }
-
-        // Individual tiles are images on most versions; the grid container itself is an
-        // accessibility group labelled with every photo it holds, so it is only a fallback.
-        let tile = photos.images.matching(NSPredicate(
-            format: "identifier BEGINSWITH 'Photo,' OR label BEGINSWITH 'Photo,'"
-        )).firstMatch
-        if tile.waitForExistence(timeout: 10), tile.isHittable {
-            tile.tap()
-            return
-        }
-
-        let grid = photos.descendants(matching: .any).matching(NSPredicate(
-            format: "identifier BEGINSWITH 'PXGGridLayout'"
-        )).firstMatch
-        if grid.waitForExistence(timeout: 15) {
-            grid.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.06)).tap()
-            return
+        // The grid can open scrolled down behind the toolbar, where no tile is hittable, so
+        // swipe to the top and retry until a tap actually opens the viewer.
+        for _ in 0..<6 {
+            if openAHittablePhoto() { return }
+            photos.swipeDown()
+            Thread.sleep(forTimeInterval: 1.2)
         }
 
         attachScreenshot(named: "photos-no-tile")
-        XCTFail("Photos exposes no photo tile: \(photos.debugDescription)")
+        XCTFail("could not open a photo: \(photos.debugDescription)")
+    }
+
+    /// Taps a photo and reports whether the viewer opened (it is the only screen with Share).
+    private func openAHittablePhoto() -> Bool {
+        let tiles = photos.images.matching(NSPredicate(format: "label BEGINSWITH 'Photo,'"))
+        for index in 0..<min(tiles.count, 12) {
+            let tile = tiles.element(boundBy: index)
+            guard tile.isHittable else { continue }
+            tile.tap()
+            if photos.buttons["Share"].waitForExistence(timeout: 4) { return true }
+        }
+        return false
     }
 
     private func tapShare() {
@@ -188,9 +187,11 @@ final class ShareSheetE2ETests: XCTestCase {
 
     // MARK: - Evidence
 
+    /// An attachment on the draft, matched without assuming the exact provider file name.
     private func imageAttachment() -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(
-            format: "label CONTAINS[c] '.png' OR label CONTAINS[c] '.jpg' OR label CONTAINS[c] '.jpeg' OR label CONTAINS[c] '.heic'"
+            format: "label CONTAINS[c] '.png' OR label CONTAINS[c] '.jpg' OR label CONTAINS[c] '.jpeg'"
+                + " OR label CONTAINS[c] '.heic' OR label CONTAINS[c] '.heif'"
         )).element(boundBy: 0)
     }
 
