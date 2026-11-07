@@ -125,6 +125,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install opencode, which the server needs to serve
+        run: |
+          npm install -g "@opencode/cli@$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
+          opencode --version
+
       - name: Build the app for the simulator, keeping the simulator Podfile
         env:
           IOS_SIM_BUILD_KEEP_PODS: '1'
@@ -136,8 +141,8 @@ jobs:
           node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \
             > "$RUNNER_TEMP/openchamber-server.log" 2>&1 &
           for attempt in $(seq 1 90); do
-            if curl -fsS -o /dev/null http://127.0.0.1:4123/; then
-              echo "server answered after ${attempt}s"
+            if curl -fsS http://127.0.0.1:4123/health; then
+              echo "server answered after $((attempt * 2))s"
               exit 0
             fi
             sleep 2

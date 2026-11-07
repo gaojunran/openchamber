@@ -54,6 +54,13 @@ final class ShareSheetE2ETests: XCTestCase {
     // MARK: - App side
 
     private func connectToServer() {
+        // The manual form starts collapsed because iOS supports QR pairing; the toggle is
+        // part of the page, so opening it is the same path a user takes.
+        let toggle = app.buttons["Connect by address"].firstMatch
+        if toggle.waitForExistence(timeout: 60) {
+            toggle.tap()
+        }
+
         let urlField = app.textFields["Server URL"].firstMatch
         XCTAssertTrue(
             urlField.waitForExistence(timeout: 120),
@@ -83,6 +90,7 @@ final class ShareSheetE2ETests: XCTestCase {
     private func openTheOnlyPhoto() {
         photos.launch()
         XCTAssertTrue(photos.wait(for: .runningForeground, timeout: 60))
+        dismissOnboarding()
 
         let cell = photos.cells.firstMatch
         if cell.waitForExistence(timeout: 30) {
@@ -95,6 +103,16 @@ final class ShareSheetE2ETests: XCTestCase {
             "Photos shows no photo (was the image added to the simulator?):\n\(photos.debugDescription)"
         )
         image.tap()
+    }
+
+    /// A fresh simulator can open Photos on its "what's new" sheet, which hides the grid.
+    private func dismissOnboarding() {
+        for label in ["Continue", "Get Started", "Not Now", "Done"] {
+            let button = photos.buttons[label].firstMatch
+            if button.waitForExistence(timeout: 5) {
+                button.tap()
+            }
+        }
     }
 
     private func tapShare() {
