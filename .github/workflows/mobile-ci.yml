@@ -223,6 +223,24 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
+      - name: Inspect the share inbox
+        if: always()
+        run: |
+          set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          echo "--- app group containers"
+          for GROUP in $(xcrun simctl get_app_container "$UDID" com.openchamber.app groups 2>/dev/null); do
+            echo "== $GROUP"
+            find "$GROUP" -maxdepth 2 -print 2>&1 | head -20
+            if [ -f "$GROUP/SharedInbox/manifest.json" ]; then
+              cat "$GROUP/SharedInbox/manifest.json"
+              echo
+            fi
+          done || true
+          echo "--- inbox log"
+          xcrun simctl spawn "$UDID" log show --last 30m --style compact \
+            --predicate 'eventMessage CONTAINS "[ShareInbox]"' 2>&1 | tail -40 || true
+
       - name: Probe the app launch
         if: always()
         run: |
@@ -237,7 +255,7 @@ jobs:
           ( xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" com.openchamber.app & CPID=$!; sleep 20; kill "$CPID" 2>/dev/null ) 2>&1 | head -80 || true
           xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot "$RUNNER_TEMP/launch.png" || true
           echo "--- app log"
-          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 30m --style compact \
             --predicate 'processImagePath CONTAINS "App.app/" OR subsystem CONTAINS "com.apple.WebKit"' 2>&1 | tail -80 || true
 
           echo "--- registered share extensions"

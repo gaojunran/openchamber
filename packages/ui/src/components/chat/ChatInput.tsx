@@ -3627,8 +3627,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         if (pendingDraftAttachments == null || columnPinned) return;
         if (draftSubmitDraftId === null || pendingDraftAttachments.draftId !== draftSubmitDraftId) return;
         const files = useInputStore.getState().consumePendingDraftAttachments(draftSubmitDraftId);
-        if (files?.length) void attachFiles(files);
-    }, [attachFiles, columnPinned, draftSubmitDraftId, pendingDraftAttachments]);
+        console.info(
+            '[shared-files] pending', pendingDraftAttachments.draftId, 'composer', draftSubmitDraftId,
+            'mode', imageSaveMode, 'files', files?.map((file) => `${file.name} ${file.type} ${file.size}`).join(', '),
+        );
+        if (files?.length) {
+            void attachFiles(files).then(() => {
+                console.info('[shared-files] attached', useInputStore.getState().attachedFiles.map((file) => file.filename).join(', '));
+            });
+        }
+    }, [attachFiles, columnPinned, draftSubmitDraftId, imageSaveMode, pendingDraftAttachments]);
 
     const handleVSCodePickFiles = React.useCallback(async () => {
         try {

@@ -41,6 +41,11 @@ final class ShareViewController: UIViewController {
             let records = await ShareStaging.records(from: extensionContext, in: directory)
             guard !records.isEmpty else { throw ShareInboxError.noFiles }
             try ShareInbox.write(records, in: directory)
+            NSLog(
+                "[ShareInbox] staged %@",
+                records.map { "\($0.rejected ?? "ok") \($0.name) (\($0.mimeType), \($0.size))" }
+                    .joined(separator: ", ")
+            )
             openApp()
             extensionContext?.completeRequest(returningItems: nil)
         } catch {

@@ -114,6 +114,12 @@ enum ShareInbox {
                 "data": data.base64EncodedString(),
             ])
         }
+        NSLog(
+            "[ShareInbox] took files=%d rejected=%d names=%@",
+            files.count,
+            rejected.count,
+            records.map { "\($0.name) (\($0.mimeType), \($0.size))" }.joined(separator: ", ")
+        )
         return (files, rejected)
     }
 }
