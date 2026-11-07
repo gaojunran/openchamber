@@ -35,6 +35,46 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tail -150
 
+  native-tests:
+    name: Run the inbox and staging tests on a simulator
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, subprocess, sys
+
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              found = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+          for runtime in sorted(data["devices"], key=version, reverse=True):
+              for device in data["devices"][runtime]:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      print(f"udid={device['udid']}")
+                      print(f"picked {device['name']} on {runtime}", file=sys.stderr)
+                      raise SystemExit(0)
+          raise SystemExit("no available iPhone simulator")
+          PY
+
+      - name: Run the tests
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project App.xcodeproj \
+            -scheme OpenChamberShareTests \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -250
+
   full-app:
     name: Build the app and assert the extension is embedded
     runs-on: macos-15

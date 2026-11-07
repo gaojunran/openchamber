@@ -80,6 +80,7 @@ const openShortcutSession = (intent: ShortcutNewSessionIntent): void => {
 
 const REJECTED_FILE_REASONS: Record<string, string> = {
   'too-large': 'too large',
+  'batch-limit': 'share size limit',
   'too-many': 'too many files',
   'unsupported-type': 'unsupported type',
   unreadable: 'unreadable',

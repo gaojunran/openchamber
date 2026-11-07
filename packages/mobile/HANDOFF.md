@@ -104,8 +104,15 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **Share-sheet file intake** — the `OpenChamberShare` extension accepts files, images and movies
   from the iOS share sheet, stages them in the App Group inbox and opens the app. The app's
   `SharedFiles` plugin hands them to the page, which opens a new session draft with them
-  attached and unsent. More than eight files, a file over 24 MB, or a batch over 32 MB is
-  reported by name instead of attached.
+  attached and unsent. More than eight files, a file over 24 MB, a batch over 32 MB, or a file
+  the provider cannot open is reported by name instead of attached.
+- **Native tests** — `OpenChamberShareTests` (a unit-test target with no host app) runs the real
+  `FileManager`/`NSItemProvider` paths of `Shared/ShareInbox.swift` and `Shared/ShareStaging.swift`
+  in the simulator: the copy inside the load callback, the manifest round-trip, the three
+  limits, the take-once claim. `xcodebuild test -project ios/App/App.xcodeproj -scheme
+  OpenChamberShareTests -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO`.
+  The tests pass a temporary container instead of the App Group, because the test runner has no
+  entitlement for it.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
 - **iOS widgets + Control Center + Notification Service Extension** — WidgetKit extension

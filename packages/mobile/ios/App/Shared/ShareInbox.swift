@@ -3,6 +3,10 @@ import Foundation
 /// The hand-off between the share extension and the app: a shared file is copied into the
 /// App Group container, and the app reads and deletes it once the page asks for it. Both
 /// targets compile this file, so the layout has one definition.
+///
+/// The container is a parameter rather than a constant so the tests can run in a temporary
+/// directory: the test runner has no App Group entitlement, and a hard-coded container
+/// would make every staging assertion untestable.
 enum ShareInbox {
     struct Record: Codable {
         /// File name inside the inbox directory; empty for a file that was refused.
@@ -27,15 +31,23 @@ enum ShareInbox {
     /// as well; the files past it are refused by name.
     static let maxBatchBytes = 32 * 1024 * 1024
 
-    static func directory() -> URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-            .appendingPathComponent(directoryName, isDirectory: true)
+    /// The App Group container, or nil when the current process has no entitlement for it.
+    static var container: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
+    }
+
+    static func inbox(in container: URL) -> URL {
+        container.appendingPathComponent(directoryName, isDirectory: true)
     }
 
     /// Replaces whatever the last share left, so the newest share is the one that arrives.
     static func resetDirectory() throws -> URL {
-        guard let directory = directory() else { throw ShareInboxError.noAppGroup }
+        guard let container else { throw ShareInboxError.noAppGroup }
+        return try resetDirectory(in: container)
+    }
+
+    static func resetDirectory(in container: URL) throws -> URL {
+        let directory = inbox(in: container)
         let manager = FileManager.default
         try? manager.removeItem(at: directory)
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -48,20 +60,24 @@ enum ShareInbox {
     }
 
     static func hasPending() -> Bool {
-        guard let directory = directory() else { return false }
-        return FileManager.default.fileExists(atPath: directory.appendingPathComponent(manifestName).path)
+        guard let container else { return false }
+        return FileManager.default.fileExists(atPath: inbox(in: container).appendingPathComponent(manifestName).path)
     }
 
     /// Files the page can attach, plus the ones that were refused when they were shared.
     /// The inbox is emptied either way: a share is delivered once.
     static func take() -> (files: [[String: Any]], rejected: [[String: String]]) {
-        guard let inbox = directory() else { return ([], []) }
+        guard let container else { return ([], []) }
+        return take(in: container)
+    }
+
+    static func take(in container: URL) -> (files: [[String: Any]], rejected: [[String: String]]) {
+        let source = inbox(in: container)
         // Claim the share by renaming the directory. The subscribe-time take and the
         // foreground announcement can race; the loser then finds no inbox instead of
         // delivering the same files twice.
-        let claimed = inbox.deletingLastPathComponent()
-            .appendingPathComponent("\(directoryName)-\(UUID().uuidString)", isDirectory: true)
-        guard (try? FileManager.default.moveItem(at: inbox, to: claimed)) != nil else {
+        let claimed = container.appendingPathComponent("\(directoryName)-\(UUID().uuidString)", isDirectory: true)
+        guard (try? FileManager.default.moveItem(at: source, to: claimed)) != nil else {
             return ([], [])
         }
         defer { try? FileManager.default.removeItem(at: claimed) }
@@ -79,10 +95,16 @@ enum ShareInbox {
                 rejected.append(["name": record.name, "reason": reason])
                 continue
             }
-            guard record.size <= maxFileBytes,
-                  batchBytes + record.size <= maxBatchBytes,
-                  let data = try? Data(contentsOf: claimed.appendingPathComponent(record.id)) else {
+            guard record.size <= maxFileBytes else {
                 rejected.append(["name": record.name, "reason": "too-large"])
+                continue
+            }
+            guard batchBytes + record.size <= maxBatchBytes else {
+                rejected.append(["name": record.name, "reason": "batch-limit"])
+                continue
+            }
+            guard let data = try? Data(contentsOf: claimed.appendingPathComponent(record.id)) else {
+                rejected.append(["name": record.name, "reason": "unreadable"])
                 continue
             }
             batchBytes += record.size
