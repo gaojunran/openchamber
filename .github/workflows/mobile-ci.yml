@@ -206,6 +206,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
+      - name: Probe the app launch
+        if: always()
+        run: |
+          set -uo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          echo "app: $APP"
+          echo "--- bundled web assets"
+          ls "$APP/public" 2>&1 | head -10
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP" || true
+          echo "--- launch console (20s)"
+          timeout 20 xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" com.openchamber.app 2>&1 | head -80 || true
+          xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot "$RUNNER_TEMP/launch.png" || true
+          echo "--- app log"
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \
+            --predicate 'processImagePath CONTAINS "App.app/" OR subsystem CONTAINS "com.apple.WebKit"' 2>&1 | tail -80 || true
+
       - name: Export the screenshots
         if: always()
         run: |
@@ -223,4 +239,5 @@ jobs:
             ${{ runner.temp }}/e2e-attachments
             ${{ runner.temp }}/e2e.log
             ${{ runner.temp }}/openchamber-server.log
+            ${{ runner.temp }}/launch.png
           if-no-files-found: warn
