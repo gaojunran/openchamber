@@ -27,6 +27,10 @@ def centre_of(node):
     if not found:
         return None
     x1, y1, x2, y2 = map(int, found.groups())
+    # A hidden or clipped node reports an empty rectangle, and its centre is (0, 0) — tapping
+    # there does nothing and looks like a successful match.
+    if x2 <= x1 or y2 <= y1:
+        return None
     return (x1 + x2) // 2, (y1 + y2) // 2
 
 
