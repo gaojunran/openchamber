@@ -60,7 +60,7 @@ public class WidgetPlacementTest {
         int[] ids = manager.getAppWidgetIds(provider);
         note("bound overview widgets: " + ids.length);
         capturePreview();
-        publishHomeScreenshot();
+        publish("openchamber-home");
         if (ids.length == 0) {
             // Whatever is on screen now explains the failure, so keep it next to the report.
             device.dumpWindowHierarchy(new File(context.getFilesDir(), "home.xml"));
@@ -91,6 +91,9 @@ public class WidgetPlacementTest {
         note("confirming the pin prompt");
         confirm.click();
         SystemClock.sleep(3000);
+        // The launcher moves to the page it just placed the widget on, so this is the shot that
+        // should show it; the home page afterwards is taken for comparison.
+        publish("openchamber-widget-page");
         return true;
     }
 
@@ -154,13 +157,13 @@ public class WidgetPlacementTest {
      * Saves the home screen into Pictures, not the app's own storage: the shell user cannot read
      * app-private files on this image, and a screenshot nobody can collect is not evidence.
      */
-    private void publishHomeScreenshot() {
+    private void publish(String name) {
         try {
-            File shot = new File(context.getCacheDir(), "home.png");
+            File shot = new File(context.getCacheDir(), name + ".png");
             device.takeScreenshot(shot);
             Bitmap screen = android.graphics.BitmapFactory.decodeFile(shot.getAbsolutePath());
             ContentValues values = new ContentValues();
-            values.put(MediaStore.MediaColumns.DISPLAY_NAME, "openchamber-home");
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures");
             Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
@@ -171,7 +174,7 @@ public class WidgetPlacementTest {
             try (java.io.OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
                 screen.compress(Bitmap.CompressFormat.PNG, 100, stream);
             }
-            note("published the home screenshot at " + uri);
+            note("published " + name + " at " + uri);
         } catch (Exception error) {
             note("publishing the screenshot failed: " + error);
         }
