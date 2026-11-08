@@ -45,6 +45,14 @@ jobs:
         cat local.properties
 
         '
+    - name: Install opencode, which the server needs to serve
+      run: 'npm install -g "@opencode/cli@$(node -p "require(''./packages/electron/package.json'').opencodeCli.version")"
+
+        opencode --version
+
+        '
+    - name: Start a server for the app to connect to
+      run: "set -euo pipefail\nnode packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \\\n  > \"$RUNNER_TEMP/openchamber-server.log\" 2>&1 &\nfor attempt in $(seq 1 90); do\n  if curl -fsS http://127.0.0.1:4123/health; then\n    echo \"server answered after $((attempt * 2))s\"\n    exit 0\n  fi\n  sleep 2\ndone\ncat \"$RUNNER_TEMP/openchamber-server.log\"\nexit 1\n"
     - name: Build and unit-test
       working-directory: packages/mobile/android
       run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
@@ -80,7 +88,7 @@ jobs:
         arch: x86_64
         disable-animations: true
         emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; rc=$?; cd "$GITHUB_WORKSPACE" && bash scripts/android-shortcut-e2e.sh || true; exit $rc; }
+        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; g=$?; cd "$GITHUB_WORKSPACE" && bash scripts/android-shortcut-e2e.sh; e=$?; if [ $g -ne 0 ]; then exit $g; fi; exit $e; }
     - name: Upload the emulator screenshots
       if: always()
       uses: actions/upload-artifact@v4
