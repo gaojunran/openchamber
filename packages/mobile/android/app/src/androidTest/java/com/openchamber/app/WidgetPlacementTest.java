@@ -151,6 +151,7 @@ public class WidgetPlacementTest {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
         }
         note("wrote " + out + " (" + out.length() + " bytes)");
+        publishBitmap(bitmap, "openchamber-widget");
     }
 
     /**
@@ -177,6 +178,26 @@ public class WidgetPlacementTest {
             note("published " + name + " at " + uri);
         } catch (Exception error) {
             note("publishing the screenshot failed: " + error);
+        }
+    }
+
+    private void publishBitmap(Bitmap bitmap, String name) {
+        try {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures");
+            Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                note("could not publish " + name);
+                return;
+            }
+            try (java.io.OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            }
+            note("published " + name + " at " + uri);
+        } catch (Exception error) {
+            note("publishing " + name + " failed: " + error);
         }
     }
 
