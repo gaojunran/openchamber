@@ -10,7 +10,7 @@
     <ImageView
         android:layout_width="28dp"
         android:layout_height="28dp"
-        android:src="@drawable/ic_shortcut_new_session"
+        android:src="@drawable/ic_widget_new_session"
         android:contentDescription="New session" />
     <TextView
         android:layout_width="wrap_content"
