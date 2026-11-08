@@ -67,11 +67,19 @@ if [ -n "${CX:-}" ]; then
     sleep 1
     dump 0-filled
     shot 0-filled
-    # The sheet has its own Connect button.
-    read -r BTN_X BTN_Y <<<"$(at exact 0-filled 'Connect')"
+    # The sheet is taller than the screen, so its Connect button starts below the fold.
+    for _ in $(seq 1 4); do
+      read -r BTN_X BTN_Y <<<"$(at exact 0-filled 'Connect')"
+      if [ -n "${BTN_X:-}" ]; then break; fi
+      adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 78 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 30 / 100))" 300
+      sleep 2
+      dump 0-filled
+    done
     if [ -n "${BTN_X:-}" ]; then
+      echo "tapping Connect at ${BTN_X},${BTN_Y}"
       adb shell input tap "$BTN_X" "$BTN_Y"
     else
+      echo "::warning::no Connect button found; labels: $(labels 0-filled)"
       adb shell input keyevent 66
     fi
     for _ in $(seq 1 20); do
