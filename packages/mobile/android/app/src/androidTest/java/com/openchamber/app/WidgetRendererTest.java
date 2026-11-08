@@ -98,8 +98,8 @@ public class WidgetRendererTest {
 
         assertEquals("One", text(view, R.id.r1_title));
         assertEquals("Three", text(view, R.id.r3_title));
-        // The fourth session has no row in this layout.
-        assertEquals(View.GONE, view.findViewById(R.id.r4).getVisibility());
+        // The overview layout declares three rows, so a fourth session simply has no view.
+        assertTrue("the overview must not grow a fourth row", view.findViewById(R.id.r4) == null);
         assertEquals("1", text(view, R.id.widget_attention));
     }
 
