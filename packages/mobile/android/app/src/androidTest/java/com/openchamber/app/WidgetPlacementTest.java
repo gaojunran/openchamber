@@ -16,11 +16,14 @@ import android.widget.RemoteViews;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.BySelector;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.Until;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.util.regex.Pattern;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -36,13 +39,14 @@ public class WidgetPlacementTest {
     private static final String TAG = "WidgetPlacement";
 
     private final UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+    private final StringBuilder report = new StringBuilder();
     private final Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
     @Test
     public void aWidgetLandsOnTheHomeScreen() throws Exception {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
         ComponentName provider = new ComponentName(context, OverviewWidgetProvider.class);
-        Log.i(TAG, "pin supported: " + manager.isRequestPinAppWidgetSupported());
+        note("pin supported: " + manager.isRequestPinAppWidgetSupported());
 
         if (!pin(manager, provider)) {
             dragFromPicker();
@@ -51,25 +55,36 @@ public class WidgetPlacementTest {
         device.pressHome();
         SystemClock.sleep(2500);
         int[] ids = manager.getAppWidgetIds(provider);
-        Log.i(TAG, "bound overview widgets: " + ids.length);
+        note("bound overview widgets: " + ids.length);
         capturePreview();
+        if (ids.length == 0) {
+            // Whatever is on screen now explains the failure, so keep it next to the report.
+            device.dumpWindowHierarchy(new File(context.getFilesDir(), "home.xml"));
+        }
+        writeReport();
         assertTrue("the launcher bound no overview widget", ids.length > 0);
     }
 
     /** The system prompt a user confirms; the launcher answers by binding the widget itself. */
-    private boolean pin(AppWidgetManager manager, ComponentName provider) {
+    private boolean pin(AppWidgetManager manager, ComponentName provider) throws Exception {
         if (!manager.isRequestPinAppWidgetSupported()) {
             return false;
         }
         if (!manager.requestPinAppWidget(provider, null, null)) {
-            Log.i(TAG, "the launcher refused to pin the widget");
+            note("the launcher refused to pin the widget");
             return false;
         }
-        UiObject2 confirm = waitFor("Add", 8000);
+        // The prompt's button is "Add" or "ADD" depending on the launcher's casing.
+        UiObject2 confirm = device.wait(
+            Until.findObject(By.text(Pattern.compile("(?i)^add( to home screen)?$"))),
+            8000
+        );
         if (confirm == null) {
-            Log.i(TAG, "no pin prompt appeared");
+            note("no pin prompt appeared");
+            device.dumpWindowHierarchy(new File(context.getFilesDir(), "pin-prompt.xml"));
             return false;
         }
+        note("confirming the pin prompt");
         confirm.click();
         SystemClock.sleep(3000);
         return true;
@@ -83,7 +98,7 @@ public class WidgetPlacementTest {
         SystemClock.sleep(800);
         UiObject2 widgets = waitFor("Widgets", 5000);
         if (widgets == null) {
-            Log.i(TAG, "no Widgets entry on the home menu");
+            note("no Widgets entry on the home menu");
             return;
         }
         widgets.click();
@@ -91,7 +106,7 @@ public class WidgetPlacementTest {
 
         UiObject2 entry = scrollTo("OpenChamber", 8);
         if (entry == null) {
-            Log.i(TAG, "OpenChamber is not in the picker");
+            note("OpenChamber is not in the picker");
             return;
         }
         entry.click();
@@ -99,10 +114,10 @@ public class WidgetPlacementTest {
 
         UiObject2 preview = scrollTo("OpenChamber overview", 4);
         if (preview == null) {
-            Log.i(TAG, "no overview preview");
+            note("no overview preview");
             return;
         }
-        Log.i(TAG, "dragging the preview at " + preview.getVisibleBounds());
+        note("dragging the preview at " + preview.getVisibleBounds());
         preview.drag(
             new Point(device.getDisplayWidth() / 2, (int) (device.getDisplayHeight() * 0.45)),
             400
@@ -128,7 +143,19 @@ public class WidgetPlacementTest {
         try (FileOutputStream stream = new FileOutputStream(out)) {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
         }
-        Log.i(TAG, "wrote " + out);
+        note("wrote " + out + " (" + out.length() + " bytes)");
+    }
+
+    private void note(String line) {
+        Log.i(TAG, line);
+        report.append(line).append('\n');
+    }
+
+    private void writeReport() throws Exception {
+        File out = new File(context.getFilesDir(), "placement-report.txt");
+        try (PrintWriter writer = new PrintWriter(out)) {
+            writer.print(report);
+        }
     }
 
     private UiObject2 waitFor(String text, long timeout) {
