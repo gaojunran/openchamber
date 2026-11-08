@@ -200,7 +200,7 @@ jobs:
         arch: x86_64
         disable-animations: true
         emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; rc=$?; adb pull /sdcard/Android/data/com.openchamber.app/files/evidence "$RUNNER_TEMP/android-evidence" || true; exit $rc; }
+        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; rc=$?; mkdir -p "$RUNNER_TEMP/android-evidence"; adb exec-out run-as com.openchamber.app sh -c 'cd files/evidence && tar -cf - .' > "$RUNNER_TEMP/android-evidence/evidence.tar" || true; tar -xf "$RUNNER_TEMP/android-evidence/evidence.tar" -C "$RUNNER_TEMP/android-evidence" || true; rm -f "$RUNNER_TEMP/android-evidence/evidence.tar"; exit $rc; }
     - name: Upload the emulator screenshots
       if: always()
       uses: actions/upload-artifact@v4

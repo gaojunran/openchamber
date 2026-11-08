@@ -73,7 +73,7 @@ public class LauncherShortcutsE2ETest {
     /** Written next to the screenshots so a failure can be read without re-running. */
     private void dumpHierarchy(UiDevice device, String name) throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        java.io.File directory = new java.io.File(context.getExternalFilesDir(null), "evidence");
+        java.io.File directory = new java.io.File(context.getFilesDir(), "evidence");
         //noinspection ResultOfMethodCallIgnored
         directory.mkdirs();
         try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(directory, name + ".xml"))) {
@@ -83,7 +83,7 @@ public class LauncherShortcutsE2ETest {
 
     private void attachScreenshot(UiDevice device, String name) throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        java.io.File directory = new java.io.File(context.getExternalFilesDir(null), "evidence");
+        java.io.File directory = new java.io.File(context.getFilesDir(), "evidence");
         //noinspection ResultOfMethodCallIgnored
         directory.mkdirs();
         device.takeScreenshot(new java.io.File(directory, name + ".png"));
