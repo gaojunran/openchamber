@@ -224,9 +224,10 @@ final class ShareSheetE2ETests: XCTestCase {
     }
 }
 
-/// Drives the launcher shortcut the way a user does: press home, find the installed icon,
-/// long-press it, tap *New session*, and check the app came up. It runs in the simulator, so it
-/// exercises the plist entries the system registered and the hand-off into the web layer.
+/// Drives the launcher shortcut the way a user does: press home, find the installed icon on
+/// whichever page it sits on, long-press it, tap *New session*, and check the app came up. It runs
+/// in the simulator, so it exercises the plist entries the system registered and the hand-off into
+/// the web layer.
 final class QuickActionsE2ETests: XCTestCase {
     private let app = XCUIApplication()
 
@@ -236,36 +237,56 @@ final class QuickActionsE2ETests: XCTestCase {
 
     func testLongPressingTheIconOffersBothActions() throws {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        // Launch once so the icon exists on the home screen, then start from a clean state.
+        // Launch once so the app is installed and its icon exists, then start from the home screen.
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 60), "the app did not launch")
-        app.terminate()
         XCUIDevice.shared.press(.home)
+        XCTAssertTrue(springboard.wait(for: .runningForeground, timeout: 30), "the home screen did not appear")
 
-        let icon = homeScreenIcon(in: springboard)
-        XCTAssertTrue(icon.waitForExistence(timeout: 30), "no app icon on the home screen:\n\(springboard.debugDescription)")
+        let icon = hittableIcon(in: springboard)
+        XCTAssertTrue(icon.waitForExistence(timeout: 5), "no app icon on any home page:\n\(springboard.debugDescription)")
+        XCTAssertTrue(icon.isHittable, "the app icon is not hittable:\n\(springboard.debugDescription)")
         icon.press(forDuration: 1.5)
 
         let newSession = shortcut(named: "New session", in: springboard)
         let attention = shortcut(named: "Needs attention", in: springboard)
-        XCTAssertTrue(newSession.waitForExistence(timeout: 15), "the icon offered no New session action:\n\(springboard.debugDescription)")
+        XCTAssertTrue(
+            newSession.waitForExistence(timeout: 15),
+            "the icon offered no New session action:\n\(springboard.debugDescription)"
+        )
         XCTAssertTrue(attention.exists, "the icon offered no Needs attention action:\n\(springboard.debugDescription)")
         attachScreenshot(named: "1-quick-actions-menu")
 
         newSession.tap()
 
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30), "the shortcut did not bring the app to the foreground")
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 30),
+            "the shortcut did not bring the app to the foreground"
+        )
         attachScreenshot(named: "2-new-session-from-shortcut")
-        print("E2E quick action opened the app; home screen showed: new session=\(newSession.exists) attention=\(attention.exists)")
+        print("E2E quick action opened the app: new session=\(newSession.exists) attention=\(attention.exists)")
     }
 
-    /// Springboard exposes app icons as buttons on some iOS versions and as icons on others.
-    private func homeScreenIcon(in springboard: XCUIApplication) -> XCUIElement {
-        let asButton = springboard.buttons["OpenChamber"]
-        if asButton.waitForExistence(timeout: 10) {
-            return asButton
+    /// The icon may be on any home page, and an off-screen one exists with a zero frame, so the
+    /// pages are walked until one copy is actually tappable.
+    private func hittableIcon(in springboard: XCUIApplication) -> XCUIElement {
+        func candidate() -> XCUIElement {
+            let asIcon = springboard.icons.matching(identifier: "OpenChamber").firstMatch
+            if asIcon.exists {
+                return asIcon
+            }
+            return springboard.buttons.matching(identifier: "OpenChamber").firstMatch
         }
-        return springboard.icons["OpenChamber"]
+
+        for _ in 0..<6 {
+            let icon = candidate()
+            if icon.exists && icon.isHittable {
+                return icon
+            }
+            springboard.swipeLeft()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return candidate()
     }
 
     /// The shortcut menu is a set of buttons on iOS 17+ and static text on earlier versions.

@@ -32,12 +32,12 @@ public class LauncherShortcutsE2ETest {
         openAppDrawer(device);
 
         UiObject2 icon = device.wait(Until.findObject(By.text("OpenChamber")), TIMEOUT);
-        assertNotNull("no OpenChamber icon in the app drawer:\n" + device.dumpWindowHierarchy(true), icon);
+        assertNotNull("no OpenChamber icon in the app drawer", icon);
         icon.longClick();
         device.waitForIdle();
 
         UiObject2 action = device.wait(Until.findObject(By.text("New session")), TIMEOUT);
-        assertNotNull("long-pressing the icon offered no New session action:\n" + device.dumpWindowHierarchy(true), action);
+        assertNotNull("long-pressing the icon offered no New session action", action);
         attachScreenshot(device, "1-quick-actions-menu");
         action.click();
 
