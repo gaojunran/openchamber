@@ -50,6 +50,18 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- Quick Settings tile: the Android counterpart of the iOS Control Center control. -->
+        <service
+            android:name=".NewSessionTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_new_session"
+            android:label="@string/tile_new_session"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
