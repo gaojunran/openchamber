@@ -152,13 +152,11 @@ dump 4-new-session
 shot 4-new-session
 
 # A build-update banner can cover the top of the page; its close control is drawn by the page
-# and is not in the dump, so it is dismissed by position.
-if ! labels 4-new-session | grep -q 'update available'; then
-  adb shell input tap "$((WIDTH - 31))" 148
-  sleep 2
-  dump 4-new-session-clean
-  shot 4-new-session-clean
-fi
+# and does not always reach the dump, so it is dismissed by position and the page is shot again.
+adb shell input tap "$((WIDTH - 31))" 148
+sleep 2
+dump 4-new-session-clean
+shot 4-new-session-clean
 
 RESUMED="$(adb shell dumpsys activity activities | tr -d '\r' | grep -E 'topResumedActivity|mResumedActivity' | head -1)"
 echo "resumed: $RESUMED"
