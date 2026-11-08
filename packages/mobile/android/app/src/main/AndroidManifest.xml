@@ -42,12 +42,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="openchamber" />
             </intent-filter>
-        </activity>
 
-        <!-- Long-press launcher actions; each entry opens an openchamber:// deep link. -->
-        <meta-data
-            android:name="android.app.shortcuts"
-            android:resource="@xml/shortcuts" />
+            <!-- The shortcut service reads this from the launcher activity, not from the
+                 application: the same metadata one level up is ignored and the menu stays empty. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
