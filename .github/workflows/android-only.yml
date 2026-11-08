@@ -80,7 +80,7 @@ jobs:
       uses: reactivecircus/android-emulator-runner@v2
       with:
         api-level: 34
-        target: google_apis_playstore
+        target: default
         arch: x86_64
         disable-animations: true
         emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim

@@ -3,10 +3,13 @@ package com.openchamber.app;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.os.Bundle;
@@ -29,6 +32,36 @@ import org.xmlpull.v1.XmlPullParser;
 public class LauncherShortcutsTest {
 
     private static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
+
+    /**
+     * The resource above says what we declared; this says what the system actually registered for
+     * the launcher to query. A metadata entry the shortcut service rejects leaves the first test
+     * green and the menu empty.
+     */
+    @Test
+    public void theSystemRegistersBothQuickActions() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        ShortcutManager manager = context.getSystemService(ShortcutManager.class);
+        assertNotNull("this device has no ShortcutManager", manager);
+
+        List<ShortcutInfo> shortcuts = manager.getShortcuts(ShortcutManager.FLAG_MATCH_MANIFEST);
+        assertEquals("registered shortcuts: " + ids(shortcuts), 2, shortcuts.size());
+        assertEquals("new-session", shortcuts.get(0).getId());
+        assertEquals("attention", shortcuts.get(1).getId());
+        assertEquals("openchamber://new-session", shortcuts.get(0).getIntent().getDataString());
+        assertEquals("openchamber://sessions?filter=attention", shortcuts.get(1).getIntent().getDataString());
+        assertTrue("the first action is disabled", shortcuts.get(0).isEnabled());
+        assertEquals("New session", shortcuts.get(0).getShortLabel().toString());
+        assertEquals("Needs attention", shortcuts.get(1).getShortLabel().toString());
+    }
+
+    private static String ids(List<ShortcutInfo> shortcuts) {
+        List<String> ids = new ArrayList<>();
+        for (ShortcutInfo shortcut : shortcuts) {
+            ids.add(shortcut.getId());
+        }
+        return ids.toString();
+    }
 
     @Test
     public void shortcutsMetadataAndDeepLinksMatchTheQuickActions() throws Exception {
