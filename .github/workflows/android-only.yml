@@ -29,7 +29,7 @@ jobs:
       run: bun install
     - name: Build the web assets and sync them into the Android project
       working-directory: packages/mobile
-      run: 'bun run --cwd packages/mobile sync
+      run: 'bun run sync
 
         '
     - name: Point Gradle at the preinstalled SDK
