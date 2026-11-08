@@ -62,9 +62,12 @@ if [ -n "${CX:-}" ]; then
     sleep 2
     adb shell input text "$(echo "$SERVER" | sed 's#/#\\/#g')"
     sleep 2
+    # The keyboard covers the sheet's Connect button, and Return only dismisses it.
+    adb shell input keyevent 4
+    sleep 1
     dump 0-filled
     shot 0-filled
-    # The sheet has its own Connect button; Return only dismisses the keyboard.
+    # The sheet has its own Connect button.
     read -r BTN_X BTN_Y <<<"$(at exact 0-filled 'Connect')"
     if [ -n "${BTN_X:-}" ]; then
       adb shell input tap "$BTN_X" "$BTN_Y"
@@ -85,28 +88,35 @@ else
   echo "the app is already connected"
 fi
 
-echo "--- put the icon on the workspace"
+echo "--- find the icon on the workspace"
 adb shell input keyevent KEYCODE_HOME
 sleep 3
-adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 85 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 15 / 100))" 300
-sleep 3
-dump 1-drawer
-shot 1-drawer
+dump 1-home
+shot 1-home
 
-read -r ICON_X ICON_Y <<<"$(at centre 1-drawer OpenCham)"
-if [ -z "${ICON_X:-}" ]; then
-  echo "::error::no OpenChamber icon in the app drawer; labels: $(labels 1-drawer)"
-  exit 1
+read -r HOME_X HOME_Y <<<"$(at centre 1-home OpenCham)"
+if [ -z "${HOME_X:-}" ]; then
+  echo "the icon is not on the workspace yet; opening the app drawer"
+  adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 85 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 15 / 100))" 300
+  sleep 3
+  dump 2-drawer
+  shot 2-drawer
+  read -r ICON_X ICON_Y <<<"$(at centre 2-drawer OpenCham)"
+  if [ -z "${ICON_X:-}" ]; then
+    echo "::error::no OpenChamber icon in the app drawer; labels: $(labels 2-drawer)"
+    exit 1
+  fi
+  echo "drawer icon at ${ICON_X},${ICON_Y}"
+
+  # Drag it onto the workspace: a launcher only shows a static shortcut for a workspace icon.
+  adb shell input draganddrop "$ICON_X" "$ICON_Y" "$((WIDTH / 2))" "$((HEIGHT / 3))" 1500
+  sleep 4
+  adb shell input keyevent KEYCODE_HOME
+  sleep 3
+  dump 2-home
+  shot 2-home
+  read -r HOME_X HOME_Y <<<"$(at centre 2-home OpenCham)"
 fi
-echo "icon at ${ICON_X},${ICON_Y}"
-
-# Drag it onto the workspace: a launcher only shows a static shortcut for a workspace icon.
-adb shell input draganddrop "$ICON_X" "$ICON_Y" "$((WIDTH / 2))" "$((HEIGHT / 3))" 1500
-sleep 4
-adb shell input keyevent KEYCODE_HOME
-sleep 3
-dump 2-home
-shot 2-home
 
 read -r HOME_X HOME_Y <<<"$(at centre 2-home OpenCham)"
 if [ -z "${HOME_X:-}" ]; then
