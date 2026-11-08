@@ -27,13 +27,9 @@ jobs:
         node-version: '24'
     - name: Install dependencies
       run: bun install
-    - name: Generate the native plugin scaffolding
+    - name: Build the web assets and sync them into the Android project
       working-directory: packages/mobile
-      run: 'mkdir -p dist
-
-        printf ''<!doctype html><meta charset="utf-8"><title>build placeholder</title>'' > dist/index.html
-
-        bunx --bun cap sync android
+      run: 'bun run --cwd packages/mobile sync
 
         '
     - name: Point Gradle at the preinstalled SDK
@@ -88,7 +84,7 @@ jobs:
         arch: x86_64
         disable-animations: true
         emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; g=$?; cd "$GITHUB_WORKSPACE" && bash scripts/android-shortcut-e2e.sh; e=$?; if [ $g -ne 0 ]; then exit $g; fi; exit $e; }
+        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; g=$?; bash "$GITHUB_WORKSPACE/scripts/android-shortcut-e2e.sh" "$PWD/app/build/outputs/apk/debug/app-debug.apk"; e=$?; if [ $g -ne 0 ]; then exit $g; fi; exit $e; }
     - name: Upload the emulator screenshots
       if: always()
       uses: actions/upload-artifact@v4
