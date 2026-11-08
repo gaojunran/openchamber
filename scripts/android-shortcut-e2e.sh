@@ -159,7 +159,10 @@ shot 4-new-session
 adb shell input tap "$((WIDTH - 31))" 148
 sleep 4
 # The page settles a few pixels down, which tucks the title under the toolbar.
-adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT / 3))" "$((WIDTH / 2))" "$((HEIGHT / 2))" 300
+for _ in 1 2 3; do
+  adb shell input swipe 8 "$((HEIGHT * 30 / 100))" 8 "$((HEIGHT * 70 / 100))" 400
+  sleep 1
+done
 sleep 3
 dump 4-new-session-clean
 shot 4-new-session-clean
