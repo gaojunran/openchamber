@@ -223,3 +223,64 @@ final class ShareSheetE2ETests: XCTestCase {
         add(screenshot)
     }
 }
+
+/// Drives the launcher shortcut the way a user does: press home, find the installed icon,
+/// long-press it, tap *New session*, and check the app came up. It runs in the simulator, so it
+/// exercises the plist entries the system registered and the hand-off into the web layer.
+final class QuickActionsE2ETests: XCTestCase {
+    private let app = XCUIApplication()
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    func testLongPressingTheIconOffersBothActions() throws {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        // Launch once so the icon exists on the home screen, then start from a clean state.
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 60), "the app did not launch")
+        app.terminate()
+        XCUIDevice.shared.press(.home)
+
+        let icon = homeScreenIcon(in: springboard)
+        XCTAssertTrue(icon.waitForExistence(timeout: 30), "no app icon on the home screen:\n\(springboard.debugDescription)")
+        icon.press(forDuration: 1.5)
+
+        let newSession = shortcut(named: "New session", in: springboard)
+        let attention = shortcut(named: "Needs attention", in: springboard)
+        XCTAssertTrue(newSession.waitForExistence(timeout: 15), "the icon offered no New session action:\n\(springboard.debugDescription)")
+        XCTAssertTrue(attention.exists, "the icon offered no Needs attention action:\n\(springboard.debugDescription)")
+        attachScreenshot(named: "1-quick-actions-menu")
+
+        newSession.tap()
+
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30), "the shortcut did not bring the app to the foreground")
+        attachScreenshot(named: "2-new-session-from-shortcut")
+        print("E2E quick action opened the app; home screen showed: new session=\(newSession.exists) attention=\(attention.exists)")
+    }
+
+    /// Springboard exposes app icons as buttons on some iOS versions and as icons on others.
+    private func homeScreenIcon(in springboard: XCUIApplication) -> XCUIElement {
+        let asButton = springboard.buttons["OpenChamber"]
+        if asButton.waitForExistence(timeout: 10) {
+            return asButton
+        }
+        return springboard.icons["OpenChamber"]
+    }
+
+    /// The shortcut menu is a set of buttons on iOS 17+ and static text on earlier versions.
+    private func shortcut(named name: String, in springboard: XCUIApplication) -> XCUIElement {
+        let asButton = springboard.buttons[name]
+        if asButton.exists {
+            return asButton
+        }
+        return springboard.staticTexts[name]
+    }
+
+    private func attachScreenshot(named name: String) {
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+}
