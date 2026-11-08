@@ -157,7 +157,10 @@ shot 4-new-session
 # A build-update banner can cover the top of the page; its close control is drawn by the page
 # and does not always reach the dump, so it is dismissed by position and the page is shot again.
 adb shell input tap "$((WIDTH - 31))" 148
-sleep 6
+sleep 4
+# The page settles a few pixels down, which tucks the title under the toolbar.
+adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT / 3))" "$((WIDTH / 2))" "$((HEIGHT / 2))" 300
+sleep 3
 dump 4-new-session-clean
 shot 4-new-session-clean
 
