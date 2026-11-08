@@ -46,7 +46,8 @@ public final class WidgetSnapshotStore {
     public static boolean applyPush(Context context, String runtimeKey, Integer badge, String sessionId) {
         WidgetSnapshot current = read(context);
         if (runtimeKey != null && !runtimeKey.isEmpty() && !runtimeKey.equals(current.runtimeKey)) {
-            return writeJson(context, runtimeKey, 0, new JSONArray());
+            // Another server: its sessions are gone, but its count still applies.
+            return writeJson(context, runtimeKey, badge == null ? 0 : badge, new JSONArray());
         }
         if (badge == null && sessionId == null) {
             return false;

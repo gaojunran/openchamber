@@ -64,10 +64,8 @@ final class WidgetRenderer {
             }
             WidgetSession session = sessions.get(slot);
             views.setTextViewText(titleId(slot), session.title.isEmpty() ? context.getString(R.string.widget_untitled) : session.title);
-            // The dot is a plain View, so the drawable goes in as its background.
-            views.setInt(
+            views.setImageViewResource(
                 dotId(slot),
-                "setBackgroundResource",
                 session.unread ? R.drawable.widget_dot_unread : R.drawable.widget_dot_read
             );
             views.setOnClickPendingIntent(rowId, WidgetIntents.session(context, session.id, slot));
