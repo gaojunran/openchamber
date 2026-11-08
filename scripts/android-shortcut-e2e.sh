@@ -103,12 +103,16 @@ dump 1-home
 shot 1-home
 
 read -r HOME_X HOME_Y <<<"$(at centre 1-home OpenCham)"
-if [ -z "${HOME_X:-}" ]; then
-  echo "the icon is not on the workspace yet; opening the app drawer"
+
+# Dragging out of the drawer is a launcher animation, and it occasionally drops the icon back
+# into the drawer, so the whole add-to-workspace step is retried before giving up.
+for attempt in 1 2 3; do
+  if [ -n "${HOME_X:-}" ]; then break; fi
+  echo "attempt ${attempt}: opening the app drawer"
   adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 85 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 15 / 100))" 300
-  sleep 3
+  sleep 4
   dump 2-drawer
-  shot 2-drawer
+  shot "2-drawer-${attempt}"
   read -r ICON_X ICON_Y <<<"$(at centre 2-drawer OpenCham)"
   if [ -z "${ICON_X:-}" ]; then
     echo "::error::no OpenChamber icon in the app drawer; labels: $(labels 2-drawer)"
@@ -118,15 +122,14 @@ if [ -z "${HOME_X:-}" ]; then
 
   # Drag it onto the workspace: a launcher only shows a static shortcut for a workspace icon.
   adb shell input draganddrop "$ICON_X" "$ICON_Y" "$((WIDTH / 2))" "$((HEIGHT / 3))" 1500
-  sleep 4
+  sleep 6
   adb shell input keyevent KEYCODE_HOME
-  sleep 3
+  sleep 4
   dump 2-home
-  shot 2-home
+  shot "2-home-${attempt}"
   read -r HOME_X HOME_Y <<<"$(at centre 2-home OpenCham)"
-fi
+done
 
-read -r HOME_X HOME_Y <<<"$(at centre 2-home OpenCham)"
 if [ -z "${HOME_X:-}" ]; then
   echo "::error::the icon did not land on the workspace; labels: $(labels 2-home)"
   exit 1
