@@ -240,6 +240,9 @@ final class QuickActionsE2ETests: XCTestCase {
         // Launch once so the app is installed and its icon exists, then start from the home screen.
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 60), "the app did not launch")
+        // The action opens a new-session draft, which only exists once a server is connected.
+        connectIfNeeded()
+        attachScreenshot(named: "0-connected")
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(springboard.wait(for: .runningForeground, timeout: 30), "the home screen did not appear")
 
@@ -262,6 +265,13 @@ final class QuickActionsE2ETests: XCTestCase {
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 30),
             "the shortcut did not bring the app to the foreground"
+        )
+        // The link has to survive the cold-ish launch as an intent and open the draft, so the
+        // assertion is on the composer, not just on the app being in front.
+        let composer = newSessionMarker()
+        XCTAssertTrue(
+            composer.waitForExistence(timeout: 90),
+            "the shortcut did not open a new session draft:\n\(app.debugDescription)"
         )
         attachScreenshot(named: "2-new-session-from-shortcut")
         print("E2E quick action opened the app: new session=\(newSession.exists) attention=\(attention.exists)")
@@ -287,6 +297,44 @@ final class QuickActionsE2ETests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
         }
         return candidate()
+    }
+
+    private var serverURL: String {
+        ProcessInfo.processInfo.environment["E2E_SERVER_URL"] ?? "http://127.0.0.1:4123"
+    }
+
+    /// A saved connection from an earlier run auto-connects, so the connect screen is the only
+    /// signal that a connection is still needed.
+    private func connectIfNeeded() {
+        func tile() -> XCUIElement {
+            let predicate = NSPredicate(format: "label CONTAINS[c] 'Connect by address'")
+            let text = app.staticTexts.matching(predicate).firstMatch
+            return text.exists ? text : app.buttons.matching(predicate).firstMatch
+        }
+
+        let manualTile = tile()
+        guard manualTile.waitForExistence(timeout: 25) else { return }
+        manualTile.tap()
+
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 30), "the manual form did not open:\n\(app.debugDescription)")
+        field.tap()
+        field.typeText(serverURL)
+        if app.keyboards.element.exists {
+            app.typeText("\n")
+        }
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: manualTile)
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 180), .completed, "the app never connected")
+    }
+
+    /// The draft page is recognised by its composer placeholder, which is what the deep link has
+    /// to produce; the model sheet's button is the fallback when the copy changes.
+    private func newSessionMarker() -> XCUIElement {
+        let placeholder = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'working on'")).firstMatch
+        if placeholder.exists {
+            return placeholder
+        }
+        return app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Select model'")).firstMatch
     }
 
     /// The shortcut menu is a set of buttons on iOS 17+ and static text on earlier versions.

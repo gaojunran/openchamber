@@ -31,8 +31,7 @@ jobs:
       working-directory: packages/mobile
       run: 'mkdir -p dist
 
-        printf ''<!doctype html><meta charset="utf-8"><title>build placeholder</title>''
-        > dist/index.html
+        printf ''<!doctype html><meta charset="utf-8"><title>build placeholder</title>'' > dist/index.html
 
         bunx --bun cap sync android
 
@@ -52,8 +51,7 @@ jobs:
     - name: Show the unit test results
       if: always()
       working-directory: packages/mobile/android
-      run: 'find app/build/test-results -name ''*.xml'' -exec grep -h ''<testsuite''
-        {} \; || true
+      run: 'find app/build/test-results -name ''*.xml'' -exec grep -h ''<testsuite'' {} \; || true
 
         '
     - name: Upload the unit test report
@@ -64,9 +62,7 @@ jobs:
         path: packages/mobile/android/app/build/reports/tests/testDebugUnitTest
         if-no-files-found: warn
     - name: Enable KVM for the emulator
-      run: "echo 'KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", OPTIONS+=\"static_node=kvm\"\
-        ' \\\n  | sudo tee /etc/udev/rules.d/99-kvm4all.rules\nsudo udevadm control\
-        \ --reload-rules\nsudo udevadm trigger --name-match=kvm\n"
+      run: "echo 'KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", OPTIONS+=\"static_node=kvm\"' \\\n  | sudo tee /etc/udev/rules.d/99-kvm4all.rules\nsudo udevadm control --reload-rules\nsudo udevadm trigger --name-match=kvm\n"
     - name: Cache the emulator image
       uses: actions/cache@v4
       with:
@@ -83,19 +79,8 @@ jobs:
         target: default
         arch: x86_64
         disable-animations: true
-        emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
-          -no-boot-anim
-        script: cd packages/mobile/android && ./gradlew --no-daemon :app:connectedDebugAndroidTest
-    - name: Collect the emulator screenshots
-      if: always()
-      run: 'mkdir -p "$RUNNER_TEMP/android-evidence"
-
-        adb pull /sdcard/Android/data/com.openchamber.app/files/evidence "$RUNNER_TEMP/android-evidence"
-        || true
-
-        ls -la "$RUNNER_TEMP/android-evidence" || true
-
-        '
+        emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; rc=$?; adb pull /sdcard/Android/data/com.openchamber.app/files/evidence "$RUNNER_TEMP/android-evidence" || true; exit $rc; }
     - name: Upload the emulator screenshots
       if: always()
       uses: actions/upload-artifact@v4
@@ -106,8 +91,7 @@ jobs:
     - name: Show the instrumented test results
       if: always()
       working-directory: packages/mobile/android
-      run: 'find app/build/outputs/androidTest-results -name ''*.xml'' -exec grep
-        -h ''<testsuite'' {} \; || true
+      run: 'find app/build/outputs/androidTest-results -name ''*.xml'' -exec grep -h ''<testsuite'' {} \; || true
 
         '
     - name: Upload the instrumented test report
