@@ -33,7 +33,21 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!-- The openchamber:// scheme is how launcher quick actions and other apps reach
+                 this app. Capacitor's App plugin turns these VIEW intents into appUrlOpen;
+                 without this filter the app receives no deep link at all. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="openchamber" />
+            </intent-filter>
         </activity>
+
+        <!-- Long-press launcher actions; each entry opens an openchamber:// deep link. -->
+        <meta-data
+            android:name="android.app.shortcuts"
+            android:resource="@xml/shortcuts" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
