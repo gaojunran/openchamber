@@ -259,6 +259,7 @@ final class QuickActionsE2ETests: XCTestCase {
         )
         XCTAssertTrue(attention.exists, "the icon offered no Needs attention action:\n\(springboard.debugDescription)")
         attachScreenshot(named: "1-quick-actions-menu")
+        print("E2E quick actions offered: new session=\(newSession.exists) attention=\(attention.exists)")
 
         newSession.tap()
 
@@ -274,7 +275,7 @@ final class QuickActionsE2ETests: XCTestCase {
             "the shortcut did not open a new session draft:\n\(app.debugDescription)"
         )
         attachScreenshot(named: "2-new-session-from-shortcut")
-        print("E2E quick action opened the app: new session=\(newSession.exists) attention=\(attention.exists)")
+        print("E2E quick action opened a new session draft")
     }
 
     /// The icon may be on any home page, and an off-screen one exists with a zero frame, so the
