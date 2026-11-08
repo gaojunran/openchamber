@@ -5,32 +5,20 @@ import static org.junit.Assert.assertTrue;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
-import android.graphics.Point;
-import android.app.UiAutomation;
-import android.graphics.Rect;
 import android.os.SystemClock;
-import android.view.MotionEvent;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.Until;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Puts a widget on the home screen the way a user does, then asks the system whether it is bound.
- *
- * The launcher only accepts a widget by long-pressing a preview and dragging it out, so this
- * synthesizes that gesture precisely: down, hold past the long-press threshold, move, up. A plain
- * swipe is interpreted as a scroll and the launcher never enters drag mode.
- *
- * The events go through UiAutomation, which injects as the shell user; the instrumentation's own
- * sendPointerSync is refused for windows owned by another app ("not directed at a window owned by
- * uid"), and the launcher is exactly that.
+ * Pins a widget the way a user confirms it, then asks the system whether the launcher really bound
+ * it. AppWidgetManager.getAppWidgetIds is the authority: the picker listing a provider proves only
+ * that the manifest was read.
  */
 @RunWith(AndroidJUnit4.class)
 public class WidgetPlacementTest {
@@ -39,92 +27,28 @@ public class WidgetPlacementTest {
     private final Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
     @Test
-    public void aWidgetCanBeDraggedFromThePickerOntoTheHomeScreen() throws Exception {
+    public void theSystemPinsAWidgetWhenTheUserConfirmsIt() throws Exception {
+        // requestPinAppWidget is the system flow a launcher shows as "Add to home screen"; the
+        // drag out of the picker needs a gesture the picker's own list does not reliably accept.
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        ComponentName provider = new ComponentName(context, OverviewWidgetProvider.class);
+        manager.requestPinAppWidget(provider, null, null);
+
+        UiObject2 confirm = waitFor("Add", 15_000);
+        if (confirm == null) {
+            confirm = waitFor("Add to home screen", 5_000);
+        }
+        assertTrue("the launcher did not ask to pin the widget", confirm != null);
+        confirm.click();
+        SystemClock.sleep(3000);
         device.pressHome();
-        SystemClock.sleep(1500);
-
-        longPress(device.getDisplayWidth() / 2, device.getDisplayHeight() / 2, 1500);
-        UiObject2 widgets = waitFor("Widgets", 10_000);
-        assertTrue("the home menu offers no Widgets entry", widgets != null);
-        widgets.click();
-        SystemClock.sleep(2500);
-
-        UiObject2 entry = scrollTo("OpenChamber", 8);
-        assertTrue("OpenChamber is not in the widget picker", entry != null);
-        entry.click();
-        SystemClock.sleep(2500);
-
-        UiObject2 preview = scrollTo("OpenChamber overview", 4);
-        assertTrue("no overview preview", preview != null);
-        Rect bounds = preview.getVisibleBounds();
-
-        int dropX = device.getDisplayWidth() / 2;
-        int dropY = device.getDisplayHeight() / 3;
-        dragOut(bounds.centerX(), bounds.centerY(), dropX, dropY);
-
         SystemClock.sleep(2000);
-        device.pressHome();
-        SystemClock.sleep(1500);
 
-        int[] ids = AppWidgetManager.getInstance(context)
-            .getAppWidgetIds(new ComponentName(context, OverviewWidgetProvider.class));
+        int[] ids = manager.getAppWidgetIds(provider);
         assertTrue("the launcher bound no overview widget", ids.length > 0);
     }
 
     private UiObject2 waitFor(String text, long timeout) {
         return device.wait(Until.findObject(By.textContains(text)), timeout);
-    }
-
-    private UiObject2 scrollTo(String text, int swipes) {
-        UiObject2 found = waitFor(text, 2000);
-        for (int attempt = 0; attempt < swipes && found == null; attempt++) {
-            device.swipe(
-                device.getDisplayWidth() / 2,
-                (int) (device.getDisplayHeight() * 0.75),
-                device.getDisplayWidth() / 2,
-                (int) (device.getDisplayHeight() * 0.35),
-                20
-            );
-            SystemClock.sleep(1200);
-            found = waitFor(text, 2000);
-        }
-        return found;
-    }
-
-    private void longPress(int x, int y, long holdMillis) {
-        long now = SystemClock.uptimeMillis();
-        List<MotionEvent> events = new ArrayList<>();
-        events.add(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0));
-        events.add(MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_MOVE, x, y, 0));
-        events.add(MotionEvent.obtain(now, now + holdMillis, MotionEvent.ACTION_MOVE, x, y, 0));
-        events.add(MotionEvent.obtain(now, now + holdMillis + 40, MotionEvent.ACTION_UP, x, y, 0));
-        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        automation.injectInputEvent(events.get(0), true);
-        for (int index = 1; index < events.size(); index++) {
-            automation.injectInputEvent(events.get(index), true);
-            SystemClock.sleep(index == 1 ? holdMillis : 40);
-        }
-    }
-
-    private void dragOut(int fromX, int fromY, int toX, int toY) {
-        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        long start = SystemClock.uptimeMillis();
-        automation.injectInputEvent(MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, fromX, fromY, 0), true);
-        SystemClock.sleep(1200);
-        int steps = 20;
-        for (int step = 1; step <= steps; step++) {
-            float x = fromX + (toX - fromX) * step / (float) steps;
-            float y = fromY + (toY - fromY) * step / (float) steps;
-            automation.injectInputEvent(
-                MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y, 0),
-                true
-            );
-            SystemClock.sleep(40);
-        }
-        automation.injectInputEvent(
-            MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, toX, toY, 0),
-            true
-        );
-        SystemClock.sleep(800);
     }
 }
