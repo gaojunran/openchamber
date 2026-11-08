@@ -5,7 +5,10 @@ import static org.junit.Assert.assertTrue;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.ContentValues;
 import android.graphics.Bitmap;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.graphics.Canvas;
 import android.graphics.Point;
 import android.os.SystemClock;
@@ -57,6 +60,7 @@ public class WidgetPlacementTest {
         int[] ids = manager.getAppWidgetIds(provider);
         note("bound overview widgets: " + ids.length);
         capturePreview();
+        publishHomeScreenshot();
         if (ids.length == 0) {
             // Whatever is on screen now explains the failure, so keep it next to the report.
             device.dumpWindowHierarchy(new File(context.getFilesDir(), "home.xml"));
@@ -144,6 +148,33 @@ public class WidgetPlacementTest {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
         }
         note("wrote " + out + " (" + out.length() + " bytes)");
+    }
+
+    /**
+     * Saves the home screen into Pictures, not the app's own storage: the shell user cannot read
+     * app-private files on this image, and a screenshot nobody can collect is not evidence.
+     */
+    private void publishHomeScreenshot() {
+        try {
+            File shot = new File(context.getCacheDir(), "home.png");
+            device.takeScreenshot(shot);
+            Bitmap screen = android.graphics.BitmapFactory.decodeFile(shot.getAbsolutePath());
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, "openchamber-home");
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures");
+            Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                note("could not publish the home screenshot");
+                return;
+            }
+            try (java.io.OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
+                screen.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            }
+            note("published the home screenshot at " + uri);
+        } catch (Exception error) {
+            note("publishing the screenshot failed: " + error);
+        }
     }
 
     private void note(String line) {
