@@ -44,8 +44,29 @@ public class LauncherShortcutsTest {
         ShortcutManager manager = context.getSystemService(ShortcutManager.class);
         assertNotNull("this device has no ShortcutManager", manager);
 
-        List<ShortcutInfo> shortcuts = manager.getShortcuts(ShortcutManager.FLAG_MATCH_MANIFEST);
-        assertEquals("registered shortcuts: " + ids(shortcuts), 2, shortcuts.size());
+        // Each flag reaches a different store, and a non-launcher caller is not guaranteed every
+        // one of them, so the union is what this asserts on and the per-flag counts go into the
+        // message.
+        int[] flags = {
+            ShortcutManager.FLAG_MATCH_MANIFEST,
+            ShortcutManager.FLAG_MATCH_CACHED,
+            ShortcutManager.FLAG_MATCH_DYNAMIC,
+            ShortcutManager.FLAG_MATCH_PINNED,
+        };
+        List<ShortcutInfo> shortcuts = new ArrayList<>();
+        StringBuilder report = new StringBuilder();
+        for (int flag : flags) {
+            List<ShortcutInfo> found = manager.getShortcuts(flag);
+            report.append(flag).append('=').append(found.size()).append(' ');
+            for (ShortcutInfo shortcut : found) {
+                if (!shortcuts.contains(shortcut)) {
+                    shortcuts.add(shortcut);
+                }
+            }
+        }
+        report.append("registered: ").append(ids(shortcuts));
+
+        assertEquals(report.toString(), 2, shortcuts.size());
         assertEquals("new-session", shortcuts.get(0).getId());
         assertEquals("attention", shortcuts.get(1).getId());
         assertEquals("openchamber://new-session", shortcuts.get(0).getIntent().getDataString());

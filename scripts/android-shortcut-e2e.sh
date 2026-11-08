@@ -70,8 +70,12 @@ dump 0-launch
 shot 0-launch
 
 echo "--- what the system knows about the shortcuts"
-adb shell dumpsys shortcut 2>/dev/null | grep -iA6 "$PKG" | head -40 || true
 adb shell dumpsys package "$PKG" | grep -iE "shortcut|android.app.shortcuts" | head -10 || true
+adb shell dumpsys shortcut > "$OUT/dumpsys-shortcut.txt" 2>/dev/null || true
+adb logcat -d -v time 2>/dev/null | grep -iE "shortcut" | tail -80 > "$OUT/logcat-shortcut.txt" || true
+echo "saved dumpsys-shortcut.txt ($(wc -l < "$OUT/dumpsys-shortcut.txt") lines)"
+echo "shortcut log lines: $(wc -l < "$OUT/logcat-shortcut.txt")"
+grep -i "$PKG" "$OUT/dumpsys-shortcut.txt" | head -10 || true
 
 echo "--- connect to $SERVER"
 read -r CX CY <<<"$(centre 0-launch 'Connect by address')"
