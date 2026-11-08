@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.graphics.Point;
+import android.app.UiAutomation;
 import android.graphics.Rect;
 import android.os.SystemClock;
 import android.view.MotionEvent;
@@ -26,6 +27,10 @@ import org.junit.runner.RunWith;
  * The launcher only accepts a widget by long-pressing a preview and dragging it out, so this
  * synthesizes that gesture precisely: down, hold past the long-press threshold, move, up. A plain
  * swipe is interpreted as a scroll and the launcher never enters drag mode.
+ *
+ * The events go through UiAutomation, which injects as the shell user; the instrumentation's own
+ * sendPointerSync is refused for windows owned by another app ("not directed at a window owned by
+ * uid"), and the launcher is exactly that.
  */
 @RunWith(AndroidJUnit4.class)
 public class WidgetPlacementTest {
@@ -93,30 +98,32 @@ public class WidgetPlacementTest {
         events.add(MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_MOVE, x, y, 0));
         events.add(MotionEvent.obtain(now, now + holdMillis, MotionEvent.ACTION_MOVE, x, y, 0));
         events.add(MotionEvent.obtain(now, now + holdMillis + 40, MotionEvent.ACTION_UP, x, y, 0));
-        InstrumentationRegistry.getInstrumentation().sendPointerSync(events.get(0));
+        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        automation.injectInputEvent(events.get(0), true);
         for (int index = 1; index < events.size(); index++) {
-            InstrumentationRegistry.getInstrumentation().sendPointerSync(events.get(index));
+            automation.injectInputEvent(events.get(index), true);
             SystemClock.sleep(index == 1 ? holdMillis : 40);
         }
     }
 
     private void dragOut(int fromX, int fromY, int toX, int toY) {
+        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         long start = SystemClock.uptimeMillis();
-        InstrumentationRegistry.getInstrumentation().sendPointerSync(
-            MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, fromX, fromY, 0)
-        );
+        automation.injectInputEvent(MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, fromX, fromY, 0), true);
         SystemClock.sleep(1200);
         int steps = 20;
         for (int step = 1; step <= steps; step++) {
             float x = fromX + (toX - fromX) * step / (float) steps;
             float y = fromY + (toY - fromY) * step / (float) steps;
-            InstrumentationRegistry.getInstrumentation().sendPointerSync(
-                MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y, 0)
+            automation.injectInputEvent(
+                MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x, y, 0),
+                true
             );
             SystemClock.sleep(40);
         }
-        InstrumentationRegistry.getInstrumentation().sendPointerSync(
-            MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, toX, toY, 0)
+        automation.injectInputEvent(
+            MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, toX, toY, 0),
+            true
         );
         SystemClock.sleep(800);
     }
