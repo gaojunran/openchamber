@@ -78,6 +78,12 @@ echo "shortcut log lines: $(wc -l < "$OUT/logcat-shortcut.txt")"
 grep -i "$PKG" "$OUT/dumpsys-shortcut.txt" | head -10 || true
 
 echo "--- connect to $SERVER"
+# The WebView paints after the activity is up, so the first dump can come back empty.
+for _ in $(seq 1 20); do
+  if texts 0-launch | grep -q 'Connect by address'; then break; fi
+  sleep 3
+  dump 0-launch
+done
 read -r CX CY <<<"$(centre 0-launch 'Connect by address')"
 if [ -n "${CX:-}" ]; then
   adb shell input tap "$CX" "$CY"
