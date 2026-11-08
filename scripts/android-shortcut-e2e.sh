@@ -47,13 +47,17 @@ centre() {
 import re, sys
 xml = open(sys.argv[1], encoding='utf-8', errors='replace').read()
 want = sys.argv[2].lower()
+exact = want.startswith('=')
+if exact:
+    want = want[1:]
 for node in re.findall(r'<node[^>]*>', xml):
     labels = []
     for key in ('text', 'content-desc'):
         value = re.search(key + r'="([^"]*)"', node)
         if value:
             labels.append(value.group(1))
-    if want in ' '.join(labels).lower():
+    joined = ' '.join(labels).lower()
+    if (want in joined) if not exact else (want in [label.lower() for label in labels]):
         bounds = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', node)
         if bounds:
             x1, y1, x2, y2 = map(int, bounds.groups())
@@ -106,12 +110,23 @@ PY
   fi
   if [ -n "${FX:-}" ]; then
     adb shell input tap "$FX" "$FY"
-    sleep 1
+    sleep 2
     adb shell input text "$(echo "$SERVER" | sed 's#/#\\/#g')"
-    sleep 1
-    adb shell input keyevent 66
-    sleep 15
-    dump 0-connected
+    sleep 2
+    dump 0-filled
+    shot 0-filled
+    # The form has its own Connect button; Return only dismisses the keyboard.
+    read -r BTN_X BTN_Y <<<"$(centre 0-filled '=Connect')"
+    if [ -n "${BTN_X:-}" ]; then
+      adb shell input tap "$BTN_X" "$BTN_Y"
+    else
+      adb shell input keyevent 66
+    fi
+    for _ in $(seq 1 20); do
+      sleep 3
+      dump 0-connected
+      if ! texts 0-connected | grep -q 'Connect by address'; then break; fi
+    done
     shot 0-connected
     echo "after connect: $(texts 0-connected)"
   else
