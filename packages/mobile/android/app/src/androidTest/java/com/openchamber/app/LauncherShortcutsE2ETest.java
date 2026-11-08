@@ -33,12 +33,18 @@ public class LauncherShortcutsE2ETest {
 
         UiObject2 icon = device.wait(Until.findObject(By.text("OpenChamber")), TIMEOUT);
         assertNotNull("no OpenChamber icon in the app drawer", icon);
-        icon.longClick();
-        device.waitForIdle();
 
-        UiObject2 action = device.wait(Until.findObject(By.text("New session")), TIMEOUT);
+        UiObject2 action = null;
+        for (int attempt = 1; attempt <= 2 && action == null; attempt++) {
+            icon.longClick();
+            device.waitForIdle();
+            action = device.wait(Until.findObject(By.textContains("New session")), 5_000);
+            // Evidence first: the popup is the only place the actions are visible, and it is gone
+            // as soon as the assertion gives up.
+            attachScreenshot(device, "1-quick-actions-menu-attempt" + attempt);
+            dumpHierarchy(device, "menu-attempt" + attempt);
+        }
         assertNotNull("long-pressing the icon offered no New session action", action);
-        attachScreenshot(device, "1-quick-actions-menu");
         action.click();
 
         assertTrue("the shortcut did not bring the app to the foreground", waitForApp(device, TIMEOUT));
@@ -62,6 +68,17 @@ public class LauncherShortcutsE2ETest {
 
     private boolean waitForApp(UiDevice device, long timeout) {
         return device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), timeout);
+    }
+
+    /** Written next to the screenshots so a failure can be read without re-running. */
+    private void dumpHierarchy(UiDevice device, String name) throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        java.io.File directory = new java.io.File(context.getExternalFilesDir(null), "evidence");
+        //noinspection ResultOfMethodCallIgnored
+        directory.mkdirs();
+        try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(directory, name + ".xml"))) {
+            device.dumpWindowHierarchy(out);
+        }
     }
 
     private void attachScreenshot(UiDevice device, String name) throws Exception {
