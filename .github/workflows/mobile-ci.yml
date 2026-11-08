@@ -29,7 +29,7 @@ jobs:
       run: "python3 - <<'PY' >> \"$GITHUB_OUTPUT\"\nimport json, re, subprocess, sys\n\ndata = json.loads(subprocess.check_output([\"xcrun\", \"simctl\", \"list\", \"devices\", \"available\", \"-j\"]))\ndef version(runtime):\n    found = re.search(r\"iOS-(\\d+)-(\\d+)\", runtime)\n    return (int(found.group(1)), int(found.group(2))) if found else (0, 0)\nfor runtime in sorted(data[\"devices\"], key=version, reverse=True):\n    for device in data[\"devices\"][runtime]:\n        if device.get(\"isAvailable\") and device[\"name\"].startswith(\"iPhone\"):\n            print(f\"udid={device['udid']}\")\n            print(f\"picked {device['name']} on {runtime}\", file=sys.stderr)\n            raise SystemExit(0)\nraise SystemExit(\"no available iPhone simulator\")\nPY\n"
     - name: Run the tests
       working-directory: packages/mobile/ios/App
-      run: "set -o pipefail\nxcodebuild test \\\n  -only-testing:OpenChamberShareUITests/QuickActionsE2ETests \\\n  -project App.xcodeproj \\\n  -scheme OpenChamberShareTests \\\n  -destination \"id=${{ steps.sim.outputs.udid }}\" \\\n  CODE_SIGNING_ALLOWED=NO \\\n  2>&1 | tail -250\n"
+      run: "set -o pipefail\nxcodebuild test \\\n  -project App.xcodeproj \\\n  -scheme OpenChamberShareTests \\\n  -destination \"id=${{ steps.sim.outputs.udid }}\" \\\n  CODE_SIGNING_ALLOWED=NO \\\n  2>&1 | tail -250\n"
   full-app:
     name: Build the app and assert the extension is embedded
     runs-on: macos-15
