@@ -108,7 +108,11 @@ public class WidgetRendererTest {
         assertEquals("New session must stay on one line", 1, newSession.getLayout().getLineCount());
         assertEquals("Attention must stay on one line", 1, attention.getLayout().getLineCount());
         assertTrue("the second action must sit below the first", attention.getTop() >= newSession.getBottom());
-        assertTrue("both actions must stay inside the widget", attention.getBottom() <= view.getHeight());
+        int inset = Math.round(10 * context.getResources().getDisplayMetrics().density);
+        assertTrue(
+            "both actions must stay inside the widget's padding: " + attention.getBottom() + " of " + view.getHeight(),
+            attention.getBottom() <= view.getHeight() - inset
+        );
         assertEquals("4 need attention", text(view, R.id.widget_attention));
     }
 
@@ -117,12 +121,13 @@ public class WidgetRendererTest {
         View view = apply(WidgetRenderer.sessions(context, snapshot(2, "One", "Two", "Three", "Four", "Five")));
         layoutAt(view, 250, 180);
 
-        View last = view.findViewById(R.id.r5);
+        // getBottom() is in the row's parent, so the container is what has to reach the padding.
+        View rows = view.findViewById(R.id.widget_rows);
         int padding = Math.round(12 * context.getResources().getDisplayMetrics().density);
         int expected = view.getHeight() - padding;
         assertTrue(
-            "the list must reach the bottom padding, not stop halfway: " + last.getBottom() + " vs " + expected,
-            Math.abs(last.getBottom() - expected) <= 4
+            "the list must reach the bottom padding, not stop halfway: " + rows.getBottom() + " vs " + expected,
+            Math.abs(rows.getBottom() - expected) <= 4
         );
     }
 

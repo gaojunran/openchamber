@@ -7,7 +7,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="10dp">
 
     <TextView
         android:layout_width="match_parent"
@@ -15,7 +15,7 @@
         android:singleLine="true"
         android:text="@string/widget_chat"
         android:textColor="#FFFFFFFF"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
     <TextView
@@ -27,7 +27,7 @@
         android:singleLine="true"
         android:text=""
         android:textColor="#FFFF9F0A"
-        android:textSize="11sp" />
+        android:textSize="10sp" />
 
     <!-- RemoteViews inflates from a fixed view whitelist: Space and a bare View are both refused,
          so the gap is an empty TextView. -->
@@ -43,26 +43,26 @@
         android:background="@drawable/widget_pill_accent"
         android:ellipsize="end"
         android:gravity="center"
-        android:paddingTop="5dp"
-        android:paddingBottom="5dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
         android:singleLine="true"
         android:text="@string/widget_new_session"
         android:textColor="#FF64B5FF"
-        android:textSize="11sp"
+        android:textSize="10sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/quick_attention"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:background="@drawable/widget_pill"
         android:ellipsize="end"
         android:gravity="center"
-        android:paddingTop="5dp"
-        android:paddingBottom="5dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
         android:singleLine="true"
         android:text="@string/widget_attention"
         android:textColor="#FFFFFFFF"
-        android:textSize="11sp" />
+        android:textSize="10sp" />
 </LinearLayout>
