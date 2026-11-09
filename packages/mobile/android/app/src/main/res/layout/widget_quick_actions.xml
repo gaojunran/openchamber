@@ -6,6 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
     android:orientation="vertical"
     android:padding="10dp">
 
@@ -47,7 +48,7 @@
         android:paddingBottom="4dp"
         android:singleLine="true"
         android:text="@string/widget_new_session"
-        android:textColor="#FF64B5FF"
+        android:textColor="#FFFFFFFF"
         android:textSize="10sp"
         android:textStyle="bold" />
 
