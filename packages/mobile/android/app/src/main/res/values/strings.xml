@@ -21,4 +21,6 @@
     <string name="widget_sessions_description">Your recent sessions, newest first</string>
     <string name="widget_quick_actions_description">Start a session or open what needs attention</string>
     <string name="widget_new_session_description">Start a new session</string>
+    <string name="shortcut_new_session">New session</string>
+    <string name="shortcut_needs_attention">Needs attention</string>
 </resources>

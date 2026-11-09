@@ -65,8 +65,8 @@ dependencies {
     implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
     implementation "androidx.core:core:$androidxCoreVersion"
     testImplementation 'junit:junit:4.13.2'
-    // The share intake reads real content:// URIs and the widget layouts only inflate on a
-    // device, so both are checked on an emulator rather than in a shadow.
+    // The share intake reads real content:// URIs, the widget layouts only inflate on a device,
+    // and the quick actions are registered by the shortcut service: all three need an emulator.
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
     androidTestImplementation 'androidx.test:core:1.7.0'
