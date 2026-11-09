@@ -3,7 +3,12 @@ package com.openchamber.app;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.content.ContentValues;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -90,6 +95,74 @@ public class WidgetRendererTest {
         assertEquals(View.VISIBLE, view.findViewById(R.id.widget_empty).getVisibility());
         assertEquals(View.GONE, view.findViewById(R.id.r1).getVisibility());
         assertEquals("", text(view, R.id.widget_attention));
+    }
+
+    @Test
+    public void theQuickActionsFitTheirSmallestCell() throws Exception {
+        View view = apply(WidgetRenderer.quickActions(context, snapshot(4, "Fix login", "Ship it")));
+        layoutAt(view, 110, 110);
+
+        TextView newSession = view.findViewById(R.id.quick_new);
+        TextView attention = view.findViewById(R.id.quick_attention);
+        // A label that wraps here breaks mid-word on a real 2x2 cell, which is how it looked before.
+        assertEquals("New session must stay on one line", 1, newSession.getLayout().getLineCount());
+        assertEquals("Attention must stay on one line", 1, attention.getLayout().getLineCount());
+        assertTrue("the second action must sit below the first", attention.getTop() >= newSession.getBottom());
+        assertTrue("both actions must stay inside the widget", attention.getBottom() <= view.getHeight());
+        assertEquals("4 need attention", text(view, R.id.widget_attention));
+    }
+
+    @Test
+    public void theSessionRowsFillTheWidgetHeight() throws Exception {
+        View view = apply(WidgetRenderer.sessions(context, snapshot(2, "One", "Two", "Three", "Four", "Five")));
+        layoutAt(view, 250, 180);
+
+        View last = view.findViewById(R.id.r5);
+        int bottom = last.getBottom();
+        assertTrue("the list must reach the bottom padding, not stop halfway", bottom > view.getHeight() - 20);
+    }
+
+    /** Publishes what each widget looks like, so the artifact can be reviewed without a phone. */
+    @Test
+    public void theWidgetsRenderAtTheirDeclaredSizes() throws Exception {
+        publish(WidgetRenderer.overview(context, snapshot(3, "Fix the login flow", "Ship the widget", "Review PR")), 250, 110, "overview");
+        publish(WidgetRenderer.sessions(context, snapshot(4, "Fix the login flow", "Ship the widget", "Review PR", "minibuild", "lunar-salamander")), 250, 180, "sessions");
+        publish(WidgetRenderer.quickActions(context, snapshot(4, "a")), 110, 110, "quick-actions");
+    }
+
+    private void publish(RemoteViews views, int widthDp, int heightDp, String name) throws Exception {
+        View view = apply(views);
+        layoutAt(view, widthDp, heightDp);
+        float density = context.getResources().getDisplayMetrics().density;
+        int width = Math.round(widthDp * density);
+        int height = Math.round(heightDp * density);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+            () -> view.draw(new Canvas(bitmap))
+        );
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, "openchamber-widget-" + name);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures");
+        Uri uri = context.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        assertTrue("could not publish " + name, uri != null);
+        try (java.io.OutputStream stream = context.getContentResolver().openOutputStream(uri)) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        }
+    }
+
+    private void layoutAt(View view, int widthDp, int heightDp) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int width = Math.round(widthDp * density);
+        int height = Math.round(heightDp * density);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            );
+            view.layout(0, 0, width, height);
+        });
     }
 
     @Test

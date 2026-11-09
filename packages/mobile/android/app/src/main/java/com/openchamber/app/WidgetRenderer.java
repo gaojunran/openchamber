@@ -31,6 +31,7 @@ final class WidgetRenderer {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_sessions);
         header(views, snapshot);
         rows(context, views, snapshot, SESSIONS_ROWS, true);
+        views.setOnClickPendingIntent(R.id.widget_new, WidgetIntents.newSession(context));
         return views;
     }
 
@@ -77,6 +78,8 @@ final class WidgetRenderer {
             }
         }
         boolean empty = sessions.isEmpty();
+        // The empty label and the list share the same weight, so only one of them may be laid out.
+        views.setViewVisibility(R.id.widget_rows, empty ? View.GONE : View.VISIBLE);
         views.setViewVisibility(R.id.widget_empty, empty ? View.VISIBLE : View.GONE);
         if (empty) {
             views.setTextViewText(R.id.widget_empty, context.getString(R.string.widget_no_sessions));
