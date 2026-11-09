@@ -36,7 +36,8 @@ jobs:
     # flaky services.gradle.org from failing the job before any test runs.
     - uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '8.14.6'
+        # Let it seed ~/.gradle/wrapper/dists for the wrapper this repo pins, instead of
+        # downloading a second copy the wrapper would not use.
         cache-read-only: false
     - name: Point Gradle at the preinstalled SDK
       working-directory: packages/mobile/android
