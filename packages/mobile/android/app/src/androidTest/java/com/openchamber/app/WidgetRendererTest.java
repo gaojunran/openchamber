@@ -118,8 +118,12 @@ public class WidgetRendererTest {
         layoutAt(view, 250, 180);
 
         View last = view.findViewById(R.id.r5);
-        int bottom = last.getBottom();
-        assertTrue("the list must reach the bottom padding, not stop halfway", bottom > view.getHeight() - 20);
+        int padding = Math.round(12 * context.getResources().getDisplayMetrics().density);
+        int expected = view.getHeight() - padding;
+        assertTrue(
+            "the list must reach the bottom padding, not stop halfway: " + last.getBottom() + " vs " + expected,
+            Math.abs(last.getBottom() - expected) <= 4
+        );
     }
 
     /** Publishes what each widget looks like, so the artifact can be reviewed without a phone. */

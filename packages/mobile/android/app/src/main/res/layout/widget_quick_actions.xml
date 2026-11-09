@@ -29,7 +29,9 @@
         android:textColor="#FFFF9F0A"
         android:textSize="11sp" />
 
-    <Space
+    <!-- RemoteViews inflates from a fixed view whitelist: Space and a bare View are both refused,
+         so the gap is an empty TextView. -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
