@@ -38,6 +38,10 @@ final class WidgetRenderer {
     static RemoteViews quickActions(Context context, WidgetSnapshot snapshot) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_actions);
         views.setTextViewText(R.id.widget_attention, snapshot.attentionCount > 0 ? snapshot.attentionLabel() : "");
+        // Set through actions like every other label: a static android:text is what the widget
+        // host renders, but it is also what an offline render of the layout cannot show.
+        views.setTextViewText(R.id.quick_new, context.getString(R.string.widget_new_session));
+        views.setTextViewText(R.id.quick_attention, context.getString(R.string.widget_attention));
         views.setOnClickPendingIntent(R.id.quick_new, WidgetIntents.newSession(context));
         views.setOnClickPendingIntent(R.id.quick_attention, WidgetIntents.attention(context));
         return views;
