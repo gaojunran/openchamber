@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -22,7 +22,7 @@
             android:singleLine="true"
             android:text="OpenChamber"
             android:textColor="#FF8E8E93"
-            android:textSize="11sp"
+            android:textSize="12sp"
             android:textStyle="normal" />
 
         <TextView
@@ -64,8 +64,8 @@
 
             <ImageView
                 android:id="@+id/r1_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -78,7 +78,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
         </LinearLayout>
         <LinearLayout
             android:id="@+id/r2"
@@ -91,8 +91,8 @@
 
             <ImageView
                 android:id="@+id/r2_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -105,7 +105,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
         </LinearLayout>
         <LinearLayout
             android:id="@+id/r3"
@@ -118,8 +118,8 @@
 
             <ImageView
                 android:id="@+id/r3_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -132,7 +132,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>
 

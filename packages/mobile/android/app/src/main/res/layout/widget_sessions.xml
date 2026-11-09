@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -22,7 +22,7 @@
             android:singleLine="true"
             android:text="Sessions"
             android:textColor="#FFFFFFFF"
-            android:textSize="13sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
@@ -64,8 +64,8 @@
 
             <ImageView
                 android:id="@+id/r1_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -78,7 +78,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
             <TextView
                 android:id="@+id/r1_project"
                 android:layout_width="wrap_content"
@@ -88,7 +88,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FF8E8E93"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -102,8 +102,8 @@
 
             <ImageView
                 android:id="@+id/r2_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -116,7 +116,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
             <TextView
                 android:id="@+id/r2_project"
                 android:layout_width="wrap_content"
@@ -126,7 +126,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FF8E8E93"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -140,8 +140,8 @@
 
             <ImageView
                 android:id="@+id/r3_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -154,7 +154,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
             <TextView
                 android:id="@+id/r3_project"
                 android:layout_width="wrap_content"
@@ -164,7 +164,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FF8E8E93"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -178,8 +178,8 @@
 
             <ImageView
                 android:id="@+id/r4_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -192,7 +192,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
             <TextView
                 android:id="@+id/r4_project"
                 android:layout_width="wrap_content"
@@ -202,7 +202,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FF8E8E93"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -216,8 +216,8 @@
 
             <ImageView
                 android:id="@+id/r5_dot"
-                android:layout_width="6dp"
-                android:layout_height="6dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@null"
                 android:src="@drawable/widget_dot_unread" />
@@ -230,7 +230,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
             <TextView
                 android:id="@+id/r5_project"
                 android:layout_width="wrap_content"
@@ -240,7 +240,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FF8E8E93"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>

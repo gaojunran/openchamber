@@ -16,7 +16,7 @@
         android:singleLine="true"
         android:text="@string/widget_chat"
         android:textColor="#FFFFFFFF"
-        android:textSize="13sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
     <TextView
@@ -28,7 +28,7 @@
         android:singleLine="true"
         android:text=""
         android:textColor="#FFFF9F0A"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 
     <!-- RemoteViews inflates from a fixed view whitelist: Space and a bare View are both refused,
          so the gap is an empty TextView. -->
@@ -49,7 +49,7 @@
         android:singleLine="true"
         android:text="@string/widget_new_session"
         android:textColor="#FFFFFFFF"
-        android:textSize="10sp"
+        android:textSize="11sp"
         android:textStyle="bold" />
 
     <TextView
@@ -65,5 +65,5 @@
         android:singleLine="true"
         android:text="@string/widget_attention"
         android:textColor="#FFFFFFFF"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 </LinearLayout>
