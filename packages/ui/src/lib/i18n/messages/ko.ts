@@ -16,6 +16,8 @@ import { htmlRenderI18n } from './html-render.i18n';
 import { documentToolbarI18n } from './document-toolbar.i18n';
 import { uiBlocksI18n } from './ui-blocks.i18n';
 import { updateDialogCanaryI18n } from './update-dialog-canary.i18n';
+import { aboutReleaseNotesI18n } from './about-release-notes.i18n';
+import { updateCheckErrorsI18n } from './update-check-errors.i18n';
 import { secretRequestI18n } from './secret-request.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
@@ -25,6 +27,9 @@ import { compactionSettingsI18n } from './compaction-settings.i18n';
 import { heapSnapshotI18n } from './heap-snapshot.i18n';
 import { consoleBudgetsI18n } from './console-budgets.i18n';
 import { imageToolI18n } from './image-tool.i18n';
+import { usageToolI18n } from './usage-tool.i18n';
+import { openchamberToolOutputI18n } from './openchamber-tool-output.i18n';
+import { opencodeToolOutputI18n } from './opencode-tool-output.i18n';
 import { agentStatusI18n } from './agent-status.i18n';
 import { selectionApprovalI18n } from './selection-approval.i18n';
 import { snippetsI18n } from './snippets.i18n';
@@ -191,6 +196,8 @@ export const dict: Record<I18nKey, string> = {
   ...documentToolbarI18n.ko,
   ...uiBlocksI18n.ko,
   ...updateDialogCanaryI18n.ko,
+  ...aboutReleaseNotesI18n.ko,
+  ...updateCheckErrorsI18n.ko,
   ...secretRequestI18n.ko,
   ...sessionNoticesI18n.ko,
   ...usageStatsI18n.ko,
@@ -200,6 +207,9 @@ export const dict: Record<I18nKey, string> = {
   ...heapSnapshotI18n.ko,
   ...consoleBudgetsI18n.ko,
   ...imageToolI18n.ko,
+  ...usageToolI18n.ko,
+  ...openchamberToolOutputI18n.ko,
+  ...opencodeToolOutputI18n.ko,
   ...agentStatusI18n.ko,
   ...snippetsI18n.ko,
   ...sidebarWorkI18n.ko,
@@ -782,6 +792,9 @@ export const dict: Record<I18nKey, string> = {
   'chat.backgroundShells.stopAll': '모두 중지',
   'chat.backgroundShells.stopAria': '{command} 중지',
   'chat.backgroundShells.elapsed': '{duration} 동안 실행 중',
+  'chat.backgroundWork.aria': '백그라운드 작업',
+  'chat.backgroundWork.count': '백그라운드: {count}',
+  'chat.backgroundImages.generating': '이미지 생성 중',
   'sessions.sidebar.session.menu.share': '공유',
   'sessions.sidebar.session.menu.copied': '복사됨',
   'sessions.sidebar.session.menu.copyLink': '링크 복사',
@@ -821,6 +834,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.session.status.unread': '읽지 않은 업데이트',
   'sessions.sidebar.session.status.backgroundSubagent': '하위 에이전트가 백그라운드에서 실행 중',
   'sessions.sidebar.session.status.backgroundCommand': '명령이 백그라운드에서 실행 중',
+  'sessions.sidebar.session.status.backgroundImage': '백그라운드에서 이미지 생성 중',
   'sessions.sidebar.session.status.waitingOnPullRequest': '검사 또는 리뷰 대기 중',
   'sessions.sidebar.session.status.pinned': '고정된 세션',
   'sessions.sidebar.session.status.movingToWorktree': '세션을 새 worktree로 이동하는 중',
@@ -1259,6 +1273,9 @@ export const dict: Record<I18nKey, string> = {
   'magicPrompts.toast.loadFailed': '매직 프롬프트를 불러오지 못했습니다. 아무것도 전송되지 않았습니다.',
   'gitView.empty.notGitRepository': '이 디렉터리는 Git 레포지토리가 아닙니다',
   'gitView.empty.notGitRepositoryDescription': '이 디렉터리에서 Git을 초기화하거나 레포지토리를 여세요.',
+  'gitView.empty.repositoryUnreadable': 'Git이 이 폴더를 읽지 못했습니다',
+  'gitView.empty.repositoryUnreadableDescription': 'Git이 보낸 메시지입니다. 문제를 해결한 뒤 다시 시도하세요.',
+  'gitView.empty.repositoryUnreadableRetry': '다시 시도',
   'gitView.empty.selectSessionOrDirectory': 'Git 상태를 볼 세션 또는 디렉터리를 선택하세요',
   'gitView.empty.worktreeFeaturesUnavailable': '이 워크스페이스 모드에서는 워크트리 기능을 사용할 수 없습니다.',
   'gitView.empty.worktreeSetupDescription': '워크트리 설정을 마치고 레포지토리 상태를 준비하고 있습니다.',
@@ -1849,6 +1866,7 @@ export const dict: Record<I18nKey, string> = {
   'contextSidebar.empty.openSession': '컨텍스트를 볼 세션을 여세요.',
   'contextSidebar.section.context': '컨텍스트',
   'contextSidebar.section.lastAssistantMessage': '마지막 어시스턴트 메시지',
+  'contextSidebar.section.sessionTotals': '세션 합계',
   'contextSidebar.section.rawMessages': '원본 메시지',
   'contextSidebar.context.percentUsed': '{percent}% 사용됨',
   'contextSidebar.breakdown.user': '사용자',

@@ -15,6 +15,8 @@ import { htmlRenderI18n } from './html-render.i18n';
 import { documentToolbarI18n } from './document-toolbar.i18n';
 import { uiBlocksI18n } from './ui-blocks.i18n';
 import { updateDialogCanaryI18n } from './update-dialog-canary.i18n';
+import { aboutReleaseNotesI18n } from './about-release-notes.i18n';
+import { updateCheckErrorsI18n } from './update-check-errors.i18n';
 import { secretRequestI18n } from './secret-request.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
@@ -24,6 +26,9 @@ import { compactionSettingsI18n } from './compaction-settings.i18n';
 import { heapSnapshotI18n } from './heap-snapshot.i18n';
 import { consoleBudgetsI18n } from './console-budgets.i18n';
 import { imageToolI18n } from './image-tool.i18n';
+import { usageToolI18n } from './usage-tool.i18n';
+import { openchamberToolOutputI18n } from './openchamber-tool-output.i18n';
+import { opencodeToolOutputI18n } from './opencode-tool-output.i18n';
 import { agentStatusI18n } from './agent-status.i18n';
 import { selectionApprovalI18n } from './selection-approval.i18n';
 import { snippetsI18n } from './snippets.i18n';
@@ -190,6 +195,8 @@ export const dict = {
   ...documentToolbarI18n.de,
   ...uiBlocksI18n.de,
   ...updateDialogCanaryI18n.de,
+  ...aboutReleaseNotesI18n.de,
+  ...updateCheckErrorsI18n.de,
   ...secretRequestI18n.de,
   ...sessionNoticesI18n.de,
   ...usageStatsI18n.de,
@@ -199,6 +206,9 @@ export const dict = {
   ...heapSnapshotI18n.de,
   ...consoleBudgetsI18n.de,
   ...imageToolI18n.de,
+  ...usageToolI18n.de,
+  ...openchamberToolOutputI18n.de,
+  ...opencodeToolOutputI18n.de,
   ...agentStatusI18n.de,
   ...snippetsI18n.de,
   ...sidebarWorkI18n.de,
@@ -698,6 +708,9 @@ export const dict = {
   'chat.backgroundShells.stopAll': 'Alle stoppen',
   'chat.backgroundShells.stopAria': '{command} stoppen',
   'chat.backgroundShells.elapsed': 'Läuft seit {duration}',
+  'chat.backgroundWork.aria': 'Arbeit im Hintergrund',
+  'chat.backgroundWork.count': 'Im Hintergrund: {count}',
+  'chat.backgroundImages.generating': 'Bild wird erstellt',
   'sessions.sidebar.session.menu.share': 'Teilen',
   'sessions.sidebar.session.menu.copied': 'Kopiert',
   'sessions.sidebar.session.menu.copyLink': 'Link kopieren',
@@ -722,6 +735,7 @@ export const dict = {
   'sessions.sidebar.session.status.unread': 'Ungelesene Updates',
   'sessions.sidebar.session.status.backgroundSubagent': 'Subagent läuft im Hintergrund',
   'sessions.sidebar.session.status.backgroundCommand': 'Befehl läuft im Hintergrund',
+  'sessions.sidebar.session.status.backgroundImage': 'Bild wird im Hintergrund erstellt',
   'sessions.sidebar.session.status.waitingOnPullRequest': 'Wartet auf Prüfungen oder ein Review',
   'sessions.sidebar.session.status.pinned': 'Angeheftete Sitzung',
   'sessions.sidebar.session.status.permissionRequired': 'Berechtigung erforderlich',
@@ -1151,6 +1165,9 @@ export const dict = {
   'magicPrompts.toast.loadFailed': 'Magic Prompts konnten nicht geladen werden. Es wurde nichts gesendet.',
   'gitView.empty.notGitRepository': 'Dieses Verzeichnis ist kein Git-Repository',
   'gitView.empty.notGitRepositoryDescription': 'Initialisieren Sie Git in diesem Verzeichnis oder öffnen Sie ein Repository.',
+  'gitView.empty.repositoryUnreadable': 'Git konnte diesen Ordner nicht lesen',
+  'gitView.empty.repositoryUnreadableDescription': 'Das hat Git gemeldet. Beheben Sie es und versuchen Sie es erneut.',
+  'gitView.empty.repositoryUnreadableRetry': 'Erneut versuchen',
   'gitView.empty.selectSessionOrDirectory': 'Wählen Sie eine Sitzung oder ein Verzeichnis aus, um den Git-Status anzuzeigen',
   'gitView.empty.worktreeFeaturesUnavailable': 'Worktree-Funktionen sind in diesem Arbeitsbereichsmodus nicht verfügbar.',
   'gitView.empty.worktreeSetupDescription': 'Arbeitstruktur-Einrichtung wird abgeschlossen und Repository-Zustand wird vorbereitet.',
@@ -1585,6 +1602,7 @@ export const dict = {
   'contextSidebar.empty.openSession': 'Öffnen Sie eine Sitzung, um den Kontext zu prüfen.',
   'contextSidebar.section.context': 'Kontext',
   'contextSidebar.section.lastAssistantMessage': 'Letzte Assistentennachricht',
+  'contextSidebar.section.sessionTotals': 'Sitzung insgesamt',
   'contextSidebar.section.rawMessages': 'Rohmeldungen',
   'contextSidebar.context.percentUsed': '{percent}% verwendet',
   'contextSidebar.breakdown.user': 'Benutzer',

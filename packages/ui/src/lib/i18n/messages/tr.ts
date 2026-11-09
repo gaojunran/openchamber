@@ -15,6 +15,8 @@ import { htmlRenderI18n } from './html-render.i18n';
 import { documentToolbarI18n } from './document-toolbar.i18n';
 import { uiBlocksI18n } from './ui-blocks.i18n';
 import { updateDialogCanaryI18n } from './update-dialog-canary.i18n';
+import { aboutReleaseNotesI18n } from './about-release-notes.i18n';
+import { updateCheckErrorsI18n } from './update-check-errors.i18n';
 import { secretRequestI18n } from './secret-request.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
@@ -24,6 +26,9 @@ import { compactionSettingsI18n } from './compaction-settings.i18n';
 import { heapSnapshotI18n } from './heap-snapshot.i18n';
 import { consoleBudgetsI18n } from './console-budgets.i18n';
 import { imageToolI18n } from './image-tool.i18n';
+import { usageToolI18n } from './usage-tool.i18n';
+import { openchamberToolOutputI18n } from './openchamber-tool-output.i18n';
+import { opencodeToolOutputI18n } from './opencode-tool-output.i18n';
 import { agentStatusI18n } from './agent-status.i18n';
 import { selectionApprovalI18n } from './selection-approval.i18n';
 import { snippetsI18n } from './snippets.i18n';
@@ -129,6 +134,8 @@ export const dict = {
   ...documentToolbarI18n.tr,
   ...uiBlocksI18n.tr,
   ...updateDialogCanaryI18n.tr,
+  ...aboutReleaseNotesI18n.tr,
+  ...updateCheckErrorsI18n.tr,
   ...secretRequestI18n.tr,
   ...sessionNoticesI18n.tr,
   ...usageStatsI18n.tr,
@@ -138,6 +145,9 @@ export const dict = {
   ...heapSnapshotI18n.tr,
   ...consoleBudgetsI18n.tr,
   ...imageToolI18n.tr,
+  ...usageToolI18n.tr,
+  ...openchamberToolOutputI18n.tr,
+  ...opencodeToolOutputI18n.tr,
   ...agentStatusI18n.tr,
   ...snippetsI18n.tr,
   ...sidebarWorkI18n.tr,
@@ -694,6 +704,9 @@ export const dict = {
   'chat.backgroundShells.stopAll': 'Tümünü durdur',
   'chat.backgroundShells.stopAria': '{command} komutunu durdur',
   'chat.backgroundShells.elapsed': '{duration} süredir çalışıyor',
+  'chat.backgroundWork.aria': 'Arka plandaki iş',
+  'chat.backgroundWork.count': 'Arka planda: {count}',
+  'chat.backgroundImages.generating': 'Görsel oluşturuluyor',
   'sessions.sidebar.session.menu.share': 'Paylaş',
   'sessions.sidebar.session.menu.copied': 'Kopyalandı',
   'sessions.sidebar.session.menu.copyLink': 'Bağlantıyı kopyala',
@@ -733,6 +746,7 @@ export const dict = {
   'sessions.sidebar.session.status.unread': 'Okunmamış güncellemeler',
   'sessions.sidebar.session.status.backgroundSubagent': 'Alt ajan arka planda çalışıyor',
   'sessions.sidebar.session.status.backgroundCommand': 'Komut arka planda çalışıyor',
+  'sessions.sidebar.session.status.backgroundImage': 'Görsel arka planda oluşturuluyor',
   'sessions.sidebar.session.status.waitingOnPullRequest': 'Denetimler veya inceleme bekleniyor',
   'sessions.sidebar.session.status.pinned': 'Sabitlenmiş session',
   'sessions.sidebar.session.status.movingToWorktree': 'Session yeni bir worktree\'ye taşınıyor',
@@ -1162,6 +1176,9 @@ export const dict = {
   'magicPrompts.toast.loadFailed': 'Sihirli Promptlar yüklenemedi. Hiçbir şey gönderilmedi.',
   'gitView.empty.notGitRepository': 'Bu dizin bir Git repository\'si değil',
   'gitView.empty.notGitRepositoryDescription': 'Bu dizinde Git\'i başlatın veya bir repository açın.',
+  'gitView.empty.repositoryUnreadable': 'Git bu klasörü okuyamadı',
+  'gitView.empty.repositoryUnreadableDescription': 'Git\'in bildirdiği bu. Sorunu giderip yeniden deneyin.',
+  'gitView.empty.repositoryUnreadableRetry': 'Yeniden dene',
   'gitView.empty.retryDiscovery': 'Yeniden dene',
   'gitView.empty.initializeGit': 'Git\'i başlat',
   'gitView.toast.initializeGitFailed': 'Git başlatılamadı',
@@ -1724,6 +1741,7 @@ export const dict = {
   'contextSidebar.empty.openSession': 'Bağlamı incelemek için bir session açın.',
   'contextSidebar.section.context': 'Bağlam',
   'contextSidebar.section.lastAssistantMessage': 'Son Asistan Mesajı',
+  'contextSidebar.section.sessionTotals': 'Session Toplamları',
   'contextSidebar.section.rawMessages': 'Ham Mesajlar',
   'contextSidebar.context.percentUsed': '%{percent} kullanıldı',
   'contextSidebar.breakdown.user': 'Kullanıcı',

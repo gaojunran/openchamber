@@ -16,6 +16,8 @@ import { htmlRenderI18n } from './html-render.i18n';
 import { documentToolbarI18n } from './document-toolbar.i18n';
 import { uiBlocksI18n } from './ui-blocks.i18n';
 import { updateDialogCanaryI18n } from './update-dialog-canary.i18n';
+import { aboutReleaseNotesI18n } from './about-release-notes.i18n';
+import { updateCheckErrorsI18n } from './update-check-errors.i18n';
 import { secretRequestI18n } from './secret-request.i18n';
 import { sessionNoticesI18n } from './session-notices.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
@@ -25,6 +27,9 @@ import { compactionSettingsI18n } from './compaction-settings.i18n';
 import { heapSnapshotI18n } from './heap-snapshot.i18n';
 import { consoleBudgetsI18n } from './console-budgets.i18n';
 import { imageToolI18n } from './image-tool.i18n';
+import { usageToolI18n } from './usage-tool.i18n';
+import { openchamberToolOutputI18n } from './openchamber-tool-output.i18n';
+import { opencodeToolOutputI18n } from './opencode-tool-output.i18n';
 import { agentStatusI18n } from './agent-status.i18n';
 import { selectionApprovalI18n } from './selection-approval.i18n';
 import { snippetsI18n } from './snippets.i18n';
@@ -201,6 +206,8 @@ export const dict: Record<I18nKey, string> = {
   ...documentToolbarI18n['pt-BR'],
   ...uiBlocksI18n['pt-BR'],
   ...updateDialogCanaryI18n['pt-BR'],
+  ...aboutReleaseNotesI18n['pt-BR'],
+  ...updateCheckErrorsI18n['pt-BR'],
   ...secretRequestI18n['pt-BR'],
   ...sessionNoticesI18n['pt-BR'],
   ...usageStatsI18n['pt-BR'],
@@ -210,6 +217,9 @@ export const dict: Record<I18nKey, string> = {
   ...heapSnapshotI18n['pt-BR'],
   ...consoleBudgetsI18n['pt-BR'],
   ...imageToolI18n['pt-BR'],
+  ...usageToolI18n['pt-BR'],
+  ...openchamberToolOutputI18n['pt-BR'],
+  ...opencodeToolOutputI18n['pt-BR'],
   ...agentStatusI18n['pt-BR'],
   ...snippetsI18n['pt-BR'],
   ...sidebarWorkI18n['pt-BR'],
@@ -786,6 +796,9 @@ export const dict: Record<I18nKey, string> = {
   "chat.backgroundShells.stopAll": "Parar todos",
   "chat.backgroundShells.stopAria": "Parar {command}",
   "chat.backgroundShells.elapsed": "Em execução há {duration}",
+  "chat.backgroundWork.aria": "Trabalho em segundo plano",
+  "chat.backgroundWork.count": "Em segundo plano: {count}",
+  "chat.backgroundImages.generating": "Gerando uma imagem",
   "sessions.sidebar.session.menu.share": "Compartilhar",
   "sessions.sidebar.session.menu.copied": "Copiado",
   "sessions.sidebar.session.menu.copyLink": "Copiar link",
@@ -825,6 +838,7 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.session.status.unread": "Atualizações não lidas",
   "sessions.sidebar.session.status.backgroundSubagent": "Subagente em execução em segundo plano",
   "sessions.sidebar.session.status.backgroundCommand": "Comando em execução em segundo plano",
+  "sessions.sidebar.session.status.backgroundImage": "Imagem sendo gerada em segundo plano",
   'sessions.sidebar.session.status.waitingOnPullRequest': 'Aguardando verificações ou uma revisão',
   "sessions.sidebar.session.status.pinned": "Sessão fixada",
   "sessions.sidebar.session.status.movingToWorktree": "Movendo a sessão para um novo worktree",
@@ -1253,6 +1267,9 @@ export const dict: Record<I18nKey, string> = {
   "magicPrompts.toast.loadFailed": "Não foi possível carregar os prompts mágicos. Nada foi enviado.",
   "gitView.empty.notGitRepository": "Este diretório não é um repositório Git",
   "gitView.empty.notGitRepositoryDescription": "Inicialize Git neste diretório ou abra um repositório.",
+  "gitView.empty.repositoryUnreadable": "O Git não conseguiu ler esta pasta",
+  "gitView.empty.repositoryUnreadableDescription": "Isto é o que o Git informou. Corrija e tente novamente.",
+  "gitView.empty.repositoryUnreadableRetry": "Tentar novamente",
   "gitView.empty.selectSessionOrDirectory": "Selecione uma sessão ou diretório para ver o status do Git",
   "gitView.empty.worktreeFeaturesUnavailable": "Os recursos de worktree não estão disponíveis neste modo de workspace.",
   "gitView.empty.worktreeSetupDescription": "Finalizando a configuração de worktree e preparando o status do repositório.",
@@ -1805,6 +1822,7 @@ export const dict: Record<I18nKey, string> = {
   "contextSidebar.empty.openSession": "Abrir uma sessão para inspecionar o contexto.",
   "contextSidebar.section.context": "Contexto",
   "contextSidebar.section.lastAssistantMessage": "Última mensagem do assistente",
+  "contextSidebar.section.sessionTotals": "Totais da sessão",
   "contextSidebar.section.rawMessages": "Mensagens brutas",
   "contextSidebar.context.percentUsed": "{percent}% usado",
   "contextSidebar.breakdown.user": "Usuário",
