@@ -169,9 +169,6 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
 - App Group `group.com.openchamber.app` in all four targets' entitlements (app + widget + NSE +
   share extension).
-- Extensions: `OpenChamberWidget` (WidgetKit, deployment 17.0) and `OpenChamberNotificationService`
-  (NSE, 15.5), both hand-wired into `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
-- App Group `group.com.openchamber.app` in all three targets' entitlements (app + widget + NSE).
 - Android: `res/xml/shortcuts.xml` holds the same two actions, and `android.app.shortcuts` must be
   declared on the launcher activity — the shortcut service ignores an application-level copy, which
   silently yields an empty long-press menu with no error anywhere. `MainActivity` needs the
@@ -220,6 +217,14 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **User scripts go in `capacitorDidLoad()`.** Capacitor replaces the `userContentController` after
   `webViewConfiguration(for:)`, silently dropping scripts added there (`BridgeViewController` in
   `AppDelegate.swift`).
+- **A shared item lands one commit later than its draft.** `newSessionDraft.draftId` reaches the
+  store before the chat column shows the draft: `ChatInput`'s `currentSessionId` comes from
+  `chatColumnSession` and trails by a frame. Anything a native share hands to the draft (files and
+  text alike, `pendingDraftContent`) must wait until `currentSessionId` is null, otherwise it is
+  filed under the session the user is leaving, and the draft's own restore — an empty draft — wipes
+  it when the column switches. Symptom: the share opens a new session with nothing in it, but only
+  when the share started from an existing session. Confirmed on device with a 43 ms gap between the
+  two store updates.
 - **A share extension cannot reliably open its host app.** `UIApplication.shared` is unavailable
   there and `extensionContext.open` only works for the Today extension point, so
   `ShareViewController` tries `extensionContext.open` first and then walks the responder chain
