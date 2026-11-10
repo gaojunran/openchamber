@@ -108,7 +108,14 @@ public class WidgetRendererTest {
         assertEquals("New session must stay on one line", 1, newSession.getLayout().getLineCount());
         assertEquals("Attention must stay on one line", 1, attention.getLayout().getLineCount());
         assertTrue("the second action must sit below the first", attention.getTop() >= newSession.getBottom());
-        int inset = Math.round(10 * context.getResources().getDisplayMetrics().density);
+        float density = context.getResources().getDisplayMetrics().density;
+        int inset = Math.round(10 * density);
+        int minimum = Math.round(30 * density);
+        assertTrue(
+            "each action must be a comfortable target in a 2x2 cell: " + newSession.getHeight()
+                + " and " + attention.getHeight() + " of " + view.getHeight(),
+            newSession.getHeight() >= minimum && attention.getHeight() >= minimum
+        );
         assertTrue(
             "both actions must stay inside the widget's padding: " + attention.getBottom() + " of " + view.getHeight(),
             attention.getBottom() <= view.getHeight() - inset
