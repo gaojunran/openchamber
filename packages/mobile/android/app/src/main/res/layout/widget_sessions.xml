@@ -78,7 +78,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
             <TextView
                 android:id="@+id/r1_project"
                 android:layout_width="wrap_content"
@@ -116,7 +116,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
             <TextView
                 android:id="@+id/r2_project"
                 android:layout_width="wrap_content"
@@ -154,7 +154,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
             <TextView
                 android:id="@+id/r3_project"
                 android:layout_width="wrap_content"
@@ -192,7 +192,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
             <TextView
                 android:id="@+id/r4_project"
                 android:layout_width="wrap_content"
@@ -230,7 +230,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
             <TextView
                 android:id="@+id/r5_project"
                 android:layout_width="wrap_content"

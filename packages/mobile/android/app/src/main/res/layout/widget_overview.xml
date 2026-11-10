@@ -78,7 +78,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
         </LinearLayout>
         <LinearLayout
             android:id="@+id/r2"
@@ -105,7 +105,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
         </LinearLayout>
         <LinearLayout
             android:id="@+id/r3"
@@ -132,7 +132,7 @@
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="#FFFFFFFF"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
 

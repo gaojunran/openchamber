@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:gravity="center_vertical"
+    android:gravity="top"
     android:orientation="vertical"
     android:padding="10dp">
 
@@ -30,40 +30,33 @@
         android:textColor="#FFFF9F0A"
         android:textSize="11sp" />
 
-    <!-- RemoteViews inflates from a fixed view whitelist: Space and a bare View are both refused,
-         so the gap is an empty TextView. -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
 
     <TextView
         android:id="@+id/quick_new"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
         android:background="@drawable/widget_pill_accent"
         android:ellipsize="end"
         android:gravity="center"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
         android:singleLine="true"
         android:text="@string/widget_new_session"
         android:textColor="#FFFFFFFF"
-        android:textSize="11sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/quick_attention"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
         android:background="@drawable/widget_pill"
         android:ellipsize="end"
         android:gravity="center"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
         android:singleLine="true"
         android:text="@string/widget_attention"
         android:textColor="#FFFFFFFF"
-        android:textSize="11sp" />
+        android:textSize="13sp" />
 </LinearLayout>
