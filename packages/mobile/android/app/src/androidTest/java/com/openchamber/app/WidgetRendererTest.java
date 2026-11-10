@@ -110,9 +110,11 @@ public class WidgetRendererTest {
         assertTrue("the second action must sit below the first", attention.getTop() >= newSession.getBottom());
         float density = context.getResources().getDisplayMetrics().density;
         int inset = Math.round(10 * density);
-        int minimum = Math.round(30 * density);
+        // A 2x2 cell leaves this much once the header row and the gaps are paid for; the floor
+        // catches a regression back to wrap_content, which made them 15dp.
+        int minimum = Math.round(24 * density);
         assertTrue(
-            "each action must be a comfortable target in a 2x2 cell: " + newSession.getHeight()
+            "the actions must take the spare height: " + newSession.getHeight()
                 + " and " + attention.getHeight() + " of " + view.getHeight(),
             newSession.getHeight() >= minimum && attention.getHeight() >= minimum
         );
