@@ -1,0 +1,107 @@
+name: Android only
+'on': push
+concurrency:
+  group: android-only-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    name: Build the Android app, test it on a device
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Show the preinstalled Android SDK
+      run: 'echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+
+        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
+
+        ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
+
+        '
+    - uses: oven-sh/setup-bun@v2
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+    - name: Install dependencies
+      run: bun install
+    - name: Build the web assets and sync them into the Android project
+      working-directory: packages/mobile
+      run: 'bun run sync
+
+        '
+    - name: Point Gradle at the preinstalled SDK
+      working-directory: packages/mobile/android
+      run: 'SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "sdk.dir=$SDK" > local.properties
+
+        cat local.properties
+
+        '
+    - name: Install opencode, which the server needs to serve
+      run: 'npm install -g "@opencode/cli@$(node -p "require(''./packages/electron/package.json'').opencodeCli.version")"
+
+        opencode --version
+
+        '
+    - name: Start a server for the app to connect to
+      run: "set -euo pipefail\nnode packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \\\n  > \"$RUNNER_TEMP/openchamber-server.log\" 2>&1 &\nfor attempt in $(seq 1 90); do\n  if curl -fsS http://127.0.0.1:4123/health; then\n    echo \"server answered after $((attempt * 2))s\"\n    exit 0\n  fi\n  sleep 2\ndone\ncat \"$RUNNER_TEMP/openchamber-server.log\"\nexit 1\n"
+    - name: Build and unit-test
+      working-directory: packages/mobile/android
+      run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
+    - name: Show the unit test results
+      if: always()
+      working-directory: packages/mobile/android
+      run: 'find app/build/test-results -name ''*.xml'' -exec grep -h ''<testsuite'' {} \; || true
+
+        '
+    - name: Upload the unit test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-unit-tests
+        path: packages/mobile/android/app/build/reports/tests/testDebugUnitTest
+        if-no-files-found: warn
+    - name: Enable KVM for the emulator
+      run: "echo 'KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", OPTIONS+=\"static_node=kvm\"' \\\n  | sudo tee /etc/udev/rules.d/99-kvm4all.rules\nsudo udevadm control --reload-rules\nsudo udevadm trigger --name-match=kvm\n"
+    - name: Cache the emulator image
+      uses: actions/cache@v4
+      with:
+        path: '~/.android/avd
+
+          /usr/local/lib/android/sdk/system-images
+
+          '
+        key: android-emulator-34-default-x86_64
+    - name: Run the share intake on an emulator
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 34
+        target: default
+        arch: x86_64
+        disable-animations: true
+        emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+        script: cd packages/mobile/android && { ./gradlew --no-daemon :app:connectedDebugAndroidTest; g=$?; bash "$GITHUB_WORKSPACE/scripts/android-widgets-e2e.sh" "$PWD/app/build/outputs/apk/debug/app-debug.apk"; e=$?; if [ $g -ne 0 ]; then exit $g; fi; exit $e; }
+    - name: Upload the emulator screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-evidence
+        path: ${{ runner.temp }}/android-evidence
+        if-no-files-found: warn
+    - name: Show the instrumented test results
+      if: always()
+      working-directory: packages/mobile/android
+      run: 'find app/build/outputs/androidTest-results -name ''*.xml'' -exec grep -h ''<testsuite'' {} \; || true
+
+        '
+    - name: Upload the instrumented test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-instrumented-tests
+        path: packages/mobile/android/app/build/reports/androidTests
+        if-no-files-found: warn
