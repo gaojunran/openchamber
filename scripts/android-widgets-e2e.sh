@@ -69,8 +69,12 @@ connect() {
 
 echo "--- install and connect"
 echo "apk under test: $APK"
+# connectedDebugAndroidTest uninstalls both APKs when it finishes, so install the app again
+# before anything reads the system's view of its tile service.
+adb install -r "$APK" || { echo "::error::could not install the debug APK"; exit 1; }
 adb shell am start -W -n "$PKG/.MainActivity" >/dev/null
 sleep 6
+if ! in_app; then echo "::error::the app did not come to the foreground: $(foreground)"; exit 1; fi
 connect || exit 1
 
 echo "--- add the Quick Settings tile"
