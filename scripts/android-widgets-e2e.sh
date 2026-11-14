@@ -89,6 +89,8 @@ sleep 5
 dump 1-qs-panel
 shot 1-qs-panel
 echo "qs labels: $(labels 1-qs-panel)"
+echo "--- tile binding log"
+adb shell logcat -d -v brief 2>/dev/null | tr -d '\r' | grep -iE "TileService|QSTile|openchamber" | tail -30 || true
 # The panel scrolls; the new tile can sit on the second page.
 adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 70 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 25 / 100))" 300
 sleep 2
@@ -112,6 +114,19 @@ if [ -n "${EX:-}" ]; then
   echo "edit labels: $(labels 1-qs-edit)"
   read -r AX AY <<<"$(at centre 1-qs-edit 'New session')"
   [ -z "${AX:-}" ] && read -r AX AY <<<"$(at centre 1-qs-edit 'OpenChamber')"
+  if [ -z "${AX:-}" ]; then
+    echo "--- scroll the add-tiles list"
+    for attempt in $(seq 1 6); do
+      adb shell input swipe "$((WIDTH / 2))" "$((HEIGHT * 78 / 100))" "$((WIDTH / 2))" "$((HEIGHT * 35 / 100))" 300
+      sleep 2
+      dump 1-qs-edit-scrolled
+      read -r AX AY <<<"$(at centre 1-qs-edit-scrolled 'New session')"
+      [ -z "${AX:-}" ] && read -r AX AY <<<"$(at centre 1-qs-edit-scrolled 'OpenChamber')"
+      [ -n "${AX:-}" ] && break
+    done
+    shot 1-qs-edit-scrolled
+    echo "scrolled labels: $(labels 1-qs-edit-scrolled)"
+  fi
   if [ -n "${AX:-}" ]; then
     adb shell input tap "$AX" "$AY"
     sleep 3
@@ -166,7 +181,7 @@ echo "--- fall back to the exact intent the tile sends"
 # This checks the routing the tile depends on when SystemUI will not dispatch the tile itself.
 adb shell am force-stop "$PKG" >/dev/null 2>&1
 sleep 2
-adb shell am start -W -a android.intent.action.VIEW -d "openchamber://new-session" -n "$PKG/.MainActivity" >/dev/null 2>&1
+echo "am start: $(adb shell am start -W -a android.intent.action.VIEW -d "openchamber://new-session" -n "$PKG/.MainActivity" 2>&1 | tr -d '\r' | tr '\n' ' ')"
 sleep 8
 for _ in $(seq 1 10); do
   dump 2-intent-draft
@@ -184,4 +199,10 @@ echo "--- tile related logcat"
 adb shell logcat -d -v brief 2>/dev/null | tr -d '\r' | grep -iE "openchamber|TileService|AndroidRuntime|FATAL" | head -20 || true
 
 echo "--- what the system knows about the tile"
-adb shell dumpsys package "$PKG" | tr -d '\r' | grep -iE "TileService|QS_TILE" | head -10 || true
+adb shell dumpsys package "$PKG" | tr -d '\r' | grep -iE -B2 -A8 "NewSessionTileService" | head -30 || true
+echo "--- the APK's own manifest"
+AAPT=$(ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"/build-tools/*/aapt2 2>/dev/null | tail -1)
+"$AAPT" dump xmltree "$APK" --file AndroidManifest.xml 2>&1 | grep -iE -B3 -A12 "NewSessionTileService" | head -40 || true
+echo "--- statusbar's view of the tiles"
+adb shell cmd statusbar help 2>&1 | tr -d '\r' | head -20 || true
+adb shell dumpsys statusbar 2>/dev/null | tr -d '\r' | grep -iE "tile|openchamber" | head -20 || true
