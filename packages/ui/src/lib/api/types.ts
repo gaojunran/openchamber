@@ -2,6 +2,9 @@ import type { WorktreeMetadata } from '@/types/worktree';
 import type { DesktopSettings } from '@/lib/settings/registry';
 import type { GitIdentityProfile, GitIdentitySummary } from './git-identity';
 import type { GitPathUnavailableReason } from './git-path-diff';
+import type { RepositoryReferenceLink, RepositoryReferenceReviewer } from './repositoryReferenceLinks';
+
+export type { RepositoryReferenceLink, RepositoryReferenceReviewer } from './repositoryReferenceLinks';
 import type {
   ChangeRequest,
   ChangeRequestContext,
@@ -1833,13 +1836,6 @@ export type RepositoryReferenceThread = {
   replies: RepositoryReferenceComment[];
 };
 
-/** Someone asked to review, or who can be; `id` is what the host names them by (a login on GitHub). */
-export type RepositoryReferenceReviewer = {
-  id: string;
-  login: string;
-  avatarUrl?: string;
-};
-
 /** What the preview adds for one item; too slow to ask for a whole page. */
 export type RepositoryReferenceDetail = {
   number: number;
@@ -1880,6 +1876,8 @@ export type RepositoryReferenceDetail = {
     /** Where the host keeps revisions (patchsets), oldest first. */
     revisions?: ChangeRequestRevision[];
   } | null;
+  /** Items that mentioned this one in their own text, oldest first. */
+  references?: RepositoryReferenceLink[];
   /** A discussion's: what this account may do with it. Absent for an issue or a change request. */
   discussion?: { canComment: boolean; canClose: boolean; canReopen: boolean };
 };

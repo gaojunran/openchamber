@@ -4,6 +4,7 @@ import { pairedDiffLine } from '../source-control/review-position.js';
 import { changeRequestNetworkTarget } from '../source-control/repository-network.js';
 import { mapGitLabCI, mapGitLabCommit, mapGitLabDiff, mapGitLabIssue, mapGitLabMergeRequest, mapGitLabNote, mapGitLabProject, mapGitLabUser, mapGitLabVerdictNote } from './mappers.js';
 import { resolveGitLabProjectsFromDirectory } from './repo.js';
+import { projectPath, readIssueReferences, systemReferences } from './references.js';
 import { isPlainObject, isString } from './validation.js';
 
 // GitLab has no draft parameter on merge-request create or edit; draft state is the
@@ -70,10 +71,6 @@ async function readCollection(load, message, perPage = COLLECTION_PER_PAGE) {
   const page = readPage(await load({ maxPages, perPage, showExpanded: true }));
   if (page.hasMore) throw new Error(message);
   return page.items;
-}
-
-function projectPath(owner, name) {
-  return `${owner}/${name}`;
 }
 
 /**
@@ -1399,6 +1396,8 @@ export function createGitLabResourceService({ origin, client, download, resolveP
       };
       if (chain !== undefined) context.stack = chain;
       if (!options.includeTimeline) return context;
+      const references = systemReferences(notes, raw.web_url, projectPath(target.project.owner, target.project.name));
+      if (references.length > 0) context.references = references;
       if (canonicalReads && !Array.isArray(commitPage?.items)) throw new Error('GitLab returned an invalid merge request commit list');
       return {
         ...context,
@@ -1440,12 +1439,13 @@ export function createGitLabResourceService({ origin, client, download, resolveP
       return { items, page: options.page ?? 1, hasMore: page.hasMore };
     },
 
-    async getIssue(directory, number, selector, remote, { linked } = {}) {
+    async getIssue(directory, number, selector, remote, { linked, includeTimeline } = {}) {
       const target = await constrainedProject(directory, selector, remote, { linked });
       const raw = await client.Issues.show(number, { projectId: target.project.id });
-      return canonicalReads
-        ? requireIssue(raw, target.project)
-        : requireMapped(mapGitLabIssue(raw, identity, target.project), 'GitLab returned an invalid issue');
+      const issue = canonicalReads ? requireIssue(raw, target.project) : requireMapped(mapGitLabIssue(raw, identity, target.project), 'GitLab returned an invalid issue');
+      if (!includeTimeline) return issue;
+      const references = await readIssueReferences(client, target.project, number, raw.web_url);
+      return references.length > 0 ? { ...issue, references } : issue;
     },
 
     /**

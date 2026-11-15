@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 
 import { checkContextSchema, isGraphqlRateLimitError, parseSummaryRefs, summarizeCheckContexts, toDiscussionState } from './pr-summaries.js';
+import { fetchPullStack } from './pull-stack.js';
 
 const REFERENCE_PAGE_SIZE = 30;
 const ACROSS_REPO_CHUNK_SIZE = 40;
@@ -158,6 +159,21 @@ query ReferenceDetail($owner: String!, $repo: String!, $number: Int!) {
         number
         body
         viewerCanUpdate
+        # The issues and pull requests that mention this one, the newest 20.
+        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 20) {
+          nodes {
+            ... on CrossReferencedEvent {
+              createdAt
+              willCloseTarget
+              actor { login avatarUrl }
+              source {
+                __typename
+                ... on Issue { number title state url repository { nameWithOwner } }
+                ... on PullRequest { number title state isDraft url repository { nameWithOwner } }
+              }
+            }
+          }
+        }
         comments(last: ${DETAIL_COMMENT_LIMIT}) { totalCount nodes { ...DetailComment } }
       }
       ... on PullRequest {
@@ -186,6 +202,21 @@ query ReferenceDetail($owner: String!, $repo: String!, $number: Int!) {
         additions
         deletions
         changedFiles
+        # The issues and pull requests that mention this one, the newest 20.
+        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 20) {
+          nodes {
+            ... on CrossReferencedEvent {
+              createdAt
+              willCloseTarget
+              actor { login avatarUrl }
+              source {
+                __typename
+                ... on Issue { number title state url repository { nameWithOwner } }
+                ... on PullRequest { number title state isDraft url repository { nameWithOwner } }
+              }
+            }
+          }
+        }
         comments(last: ${DETAIL_COMMENT_LIMIT}) { totalCount nodes { ...DetailComment } }
         commits(last: ${DETAIL_COMMIT_LIMIT}) {
           totalCount
@@ -341,6 +372,21 @@ const detailCommentSchema = z.object({
   viewerCanDelete: z.boolean().optional(),
 });
 
+const crossReferenceSchema = z.object({
+  createdAt: z.string().nullable().optional(),
+  willCloseTarget: z.boolean().nullable().optional(),
+  actor: z.object({ login: z.string(), avatarUrl: z.string().nullable().optional() }).nullable().optional(),
+  source: z.object({
+    __typename: z.string(),
+    number: z.number().int().optional(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    repository: z.object({ nameWithOwner: z.string() }).nullable().optional(),
+  }).nullable().optional(),
+}).nullable();
+
+const timelineItemsSchema = z.object({ nodes: z.array(crossReferenceSchema).nullable() }).optional();
+
 const discussionDetailSchema = z.object({
   repository: z.object({
     discussion: z.object({
@@ -375,6 +421,7 @@ const detailSchema = z.object({
         body: z.string().optional(),
         viewerCanUpdate: z.boolean().optional(),
         comments: z.object({ totalCount: z.number().int(), nodes: z.array(detailCommentSchema) }),
+        timelineItems: timelineItemsSchema,
       }),
       z.object({
         __typename: z.literal('PullRequest'),
@@ -403,6 +450,7 @@ const detailSchema = z.object({
         deletions: z.number().int(),
         changedFiles: z.number().int(),
         comments: z.object({ totalCount: z.number().int(), nodes: z.array(detailCommentSchema) }),
+        timelineItems: timelineItemsSchema,
         commits: z.object({
           totalCount: z.number().int(),
           nodes: z.array(z.object({
@@ -471,77 +519,6 @@ export const reviewCommentExcerpt = (comment) => {
   if (newSide.length < count) return undefined;
   return { startLine: start, lines: newSide.slice(-count) };
 };
-
-// A stack is rarely taller than a handful of layers; GitHub pages the rest.
-const STACK_LAYER_LIMIT = 50;
-
-// Asked beside the detail rather than inside it: a host whose schema has no
-// stacks (an older GitHub Enterprise Server) fails this query alone.
-const STACK_QUERY = `
-query PullStack($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issueOrPullRequest(number: $number) {
-      __typename
-      ... on PullRequest {
-        stack {
-          number
-          baseRefName
-          entries(first: ${STACK_LAYER_LIMIT}) {
-            nodes { position pullRequest { number title url state isDraft headRefName } }
-          }
-        }
-      }
-    }
-  }
-}
-`;
-
-const stackSchema = z.object({
-  repository: z.object({
-    issueOrPullRequest: z.object({
-      __typename: z.string(),
-      stack: z.object({
-        number: z.number().int(),
-        baseRefName: z.string(),
-        entries: z.object({
-          nodes: z.array(z.object({
-            position: z.number().int(),
-            pullRequest: z.object({
-              number: z.number().int(),
-              title: z.string(),
-              url: z.string(),
-              state: z.enum(['OPEN', 'CLOSED', 'MERGED']),
-              isDraft: z.boolean(),
-              headRefName: z.string(),
-            }).nullable(),
-          })),
-        }),
-      }).nullable().optional(),
-    }).nullable(),
-  }).nullable(),
-});
-
-/**
- * The stack a PR is a layer of, bottom layer first, or null when it is in
- * none (an issue is in none either).
- */
-export async function fetchPullStack({ octokit, owner, repo, number }) {
-  const parsed = stackSchema.parse(await octokit.graphql(STACK_QUERY, { owner, repo, number }));
-  const stack = parsed.repository?.issueOrPullRequest?.stack;
-  if (!stack) return null;
-  const layers = stack.entries.nodes
-    .filter((entry) => entry.pullRequest !== null)
-    .sort((left, right) => left.position - right.position)
-    .map(({ pullRequest }) => ({
-      number: pullRequest.number,
-      title: pullRequest.title,
-      url: pullRequest.url,
-      state: PULL_STATES[pullRequest.state],
-      draft: pullRequest.isDraft,
-      head: pullRequest.headRefName,
-    }));
-  return { number: stack.number, base: stack.baseRefName, layers };
-}
 
 const referenceNodeSchema = z.discriminatedUnion('__typename', [issueNodeSchema, pullNodeSchema, discussionNodeSchema]);
 
@@ -650,6 +627,22 @@ const editableText = (item) => {
   return text;
 };
 
+const toReferences = (item) => (item.timelineItems?.nodes ?? []).flatMap((node) => {
+  const source = node?.source;
+  if (!source || !Number.isSafeInteger(source.number) || !source.url) return [];
+  const reference = {
+    kind: source.__typename === 'PullRequest' ? 'pull' : 'issue',
+    number: source.number,
+    url: source.url,
+    createdAt: node.createdAt ?? null,
+    author: toAuthor(node.actor ?? null),
+  };
+  if (source.title) reference.title = source.title;
+  if (source.repository?.nameWithOwner) reference.repo = source.repository.nameWithOwner;
+  if (node.willCloseTarget === true || node.willCloseTarget === false) reference.willCloseTarget = node.willCloseTarget;
+  return [reference];
+});
+
 /**
  * Comments of one issue or PR, oldest first, and for a PR its size, review
  * decision and checks. A PR's reviews join the comments: a review's own text
@@ -684,7 +677,10 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number }) {
     return entry;
   });
   if (item.__typename === 'Issue') {
-    return { number: item.number, ...editableText(item), comments, commentTotal: item.comments.totalCount, pull: null };
+    const detail = { number: item.number, ...editableText(item), comments, commentTotal: item.comments.totalCount, pull: null };
+    const references = toReferences(item);
+    if (references.length > 0) detail.references = references;
+    return detail;
   }
   for (const review of item.reviews.nodes) {
     const state = REVIEW_STATES[review.state] ?? null;
@@ -756,6 +752,8 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number }) {
       commitTotal: item.commits.totalCount,
     },
   };
+  const references = toReferences(item);
+  if (references.length > 0) detail.references = references;
   if (stack !== undefined) detail.pull.stack = stack;
   return detail;
 }

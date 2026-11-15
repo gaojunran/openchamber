@@ -26,7 +26,6 @@ import {
 import {
   buildReferenceSearchQuery,
   fetchDiscussionDetail,
-  fetchPullStack,
   fetchReferenceDetail,
   labelSearchQualifiers,
   mapReferencesAcross,
@@ -38,6 +37,7 @@ import {
   searchGitHubReferences,
   searchGitHubReferencesAcross,
 } from './reference-search.js';
+import { fetchPullStack } from './pull-stack.js';
 import { fetchReviewState } from './review-draft.js';
 
 /**

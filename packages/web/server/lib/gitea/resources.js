@@ -8,6 +8,7 @@ import {
   mapGiteaReviewBody, mapGiteaReviewComment, mapGiteaUser, mapGiteaVerdict, splitUnifiedDiff,
 } from './mappers.js';
 import { resolveGiteaReposFromDirectory } from './repo.js';
+import { readTimelineCommits, readTimelineReferences } from './references.js';
 
 // Gitea caps a page at `[api] MAX_RESPONSE_ITEMS` (50 by default).
 const PAGE_LIMIT = 50;
@@ -18,7 +19,6 @@ const COLLECTION_MAX_ITEMS = 2000;
 // The fallback scan for a branch's open pull request reads at most this many
 // pages; past it the status read fails rather than answer "no pull request".
 const STATUS_SCAN_MAX_PAGES = 5;
-const TIMELINE_COMMIT_LIMIT = 50;
 const LIVE_SUMMARY_CONCURRENCY = 4;
 const LIST_DETAIL_CONCURRENCY = 4;
 const MAX_FULL_FILE_BYTES = 5 * 1024 * 1024;
@@ -337,21 +337,6 @@ export function createGiteaResourceService({
   };
 
   /**
-   * The newest commits, oldest first. Gitea pages a pull request's commits
-   * in `git log` order, newest first (1.21 and 1.27), so the first page holds
-   * the newest ones; reversing it keeps commits made within one second in
-   * order, which sorting by their second-precision dates would not.
-   */
-  const readTimelineCommits = async (repo, number) => {
-    const first = await client.page(`${repo}/pulls/${number}/commits`, { files: false, verification: false }, { page: 1, limit: TIMELINE_COMMIT_LIMIT });
-    const items = first.items.flatMap((commit) => {
-      const mapped = mapGiteaCommit(commit);
-      return mapped ? [mapped] : [];
-    }).reverse();
-    return { items, complete: !first.hasMore };
-  };
-
-  /**
    * An issue's or pull request's comments. Gitea answers them all in one
    * list and ignores `page` and `limit` here (1.21 and 1.27), so paging would
    * read the same list again.
@@ -446,7 +431,7 @@ export function createGiteaResourceService({
     async changeRequestContext(directory, number, options = {}) {
       const { target, raw, request, net } = await findPull(directory, number, options.project, { remote: options.remote, linked: options.linked });
       const repo = repoPath(target.project);
-      const [comments, reviews, diffText, changedFiles, ci, headProject, commits, viewer] = await Promise.all([
+      const [comments, reviews, diffText, changedFiles, ci, headProject, commits, references, viewer] = await Promise.all([
         readIssueComments(target.project, number),
         client.collection(`${repo}/pulls/${number}/reviews`, {}, { limit: PAGE_LIMIT, maxItems: COLLECTION_MAX_ITEMS, message: `${providerLabel} pull request has more reviews than OpenChamber reads` }),
         options.includeDiff ? client.text(`${repo}/pulls/${number}.diff`) : Promise.resolve(''),
@@ -455,7 +440,8 @@ export function createGiteaResourceService({
           : Promise.resolve([]),
         readCI(target.project, request.headSha),
         headProjectOf(raw, target, net.targets),
-        options.includeTimeline ? readTimelineCommits(repo, number) : Promise.resolve(null),
+        options.includeTimeline ? readTimelineCommits(client, repo, number) : Promise.resolve(null),
+        options.includeTimeline ? readTimelineReferences(client, repo, number) : Promise.resolve(null),
         // Only the viewer's own comments may be changed; an unread login just hides both actions.
         readCurrentLogin().catch(() => null),
       ]);
@@ -496,6 +482,7 @@ export function createGiteaResourceService({
         ci,
       };
       if (!options.includeTimeline) return context;
+      if (references.length > 0) context.references = references;
       return {
         ...context,
         commits: commits.items,
@@ -529,9 +516,13 @@ export function createGiteaResourceService({
       return { items, page, hasMore: result.hasMore };
     },
 
-    async getIssue(directory, number, selector, remote, { linked } = {}) {
+    async getIssue(directory, number, selector, remote, { linked, includeTimeline } = {}) {
       const { target } = await network(directory, selector, remote, { linked });
-      return requireIssue(await client.get(`${repoPath(target.project)}/issues/${number}`), target.project);
+      const issue = requireIssue(await client.get(`${repoPath(target.project)}/issues/${number}`), target.project);
+      if (!includeTimeline) return issue;
+      const references = await readTimelineReferences(client, repoPath(target.project), number);
+      if (references.length > 0) issue.references = references;
+      return issue;
     },
 
     async issueComments(directory, number, selector, remote, { linked } = {}) {

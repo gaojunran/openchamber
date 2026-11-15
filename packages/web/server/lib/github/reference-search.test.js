@@ -512,6 +512,76 @@ describe('fetchReferenceDetail', () => {
     });
   });
 
+  it('reads the items that mention an issue, each with the repository it lives in', async () => {
+    const detail = await fetchReferenceDetail({ octokit: graphqlReturning({
+      __typename: 'Issue',
+      number: 3,
+      comments: { totalCount: 0, nodes: [] },
+      timelineItems: { nodes: [
+        { createdAt: '2026-10-02T09:00:00Z', willCloseTarget: false, actor: author,
+          source: { __typename: 'Issue', number: 21, title: 'Wire the thing', url: 'https://github.com/acme/app/issues/21', repository: { nameWithOwner: 'acme/app' } } },
+        { createdAt: '2026-10-03T09:00:00Z', willCloseTarget: null, actor: null,
+          source: { __typename: 'Issue', number: 2, title: 'From the library', url: 'https://github.com/upstream/lib/issues/2', repository: { nameWithOwner: 'upstream/lib' } } },
+      ] },
+    }), owner: 'acme', repo: 'app', number: 3 });
+    expect(detail?.references).toEqual([
+      { kind: 'issue', number: 21, title: 'Wire the thing', url: 'https://github.com/acme/app/issues/21', repo: 'acme/app', createdAt: '2026-10-02T09:00:00Z', author, willCloseTarget: false },
+      // A reference may point into another repository than the item's own.
+      { kind: 'issue', number: 2, title: 'From the library', url: 'https://github.com/upstream/lib/issues/2', repo: 'upstream/lib', createdAt: '2026-10-03T09:00:00Z', author: null },
+    ]);
+    // The reference is the detail's own, not the issue's pull half, which stays null.
+    expect(detail?.pull).toBeNull();
+  });
+
+  it('reads a pull request cross-reference as a pull, keeping only the link fields', async () => {
+    const detail = await fetchReferenceDetail({ octokit: graphqlReturning({
+      ...pull(),
+      timelineItems: { nodes: [{ createdAt: '2026-10-04T09:00:00Z', willCloseTarget: true, actor: author,
+        source: { __typename: 'PullRequest', number: 12, title: 'Layer 12', state: 'MERGED', isDraft: false, url: 'https://github.com/acme/app/pull/12', repository: { nameWithOwner: 'acme/app' } } }] },
+    }), owner: 'acme', repo: 'app', number: 9 });
+    expect(detail?.references).toEqual([
+      { kind: 'pull', number: 12, title: 'Layer 12', url: 'https://github.com/acme/app/pull/12', repo: 'acme/app', createdAt: '2026-10-04T09:00:00Z', author, willCloseTarget: true },
+    ]);
+  });
+
+  it('leaves references off when the timeline answers nothing, on an issue or a pull request', async () => {
+    const emptyIssue = await fetchReferenceDetail({ octokit: graphqlReturning({
+      __typename: 'Issue', number: 3, comments: { totalCount: 0, nodes: [] }, timelineItems: { nodes: [] },
+    }), owner: 'acme', repo: 'app', number: 3 });
+    expect(emptyIssue).not.toHaveProperty('references');
+
+    const emptyPull = await fetchReferenceDetail({
+      octokit: graphqlReturning({ ...pull(), timelineItems: { nodes: null } }), owner: 'acme', repo: 'app', number: 9,
+    });
+    expect(emptyPull).not.toHaveProperty('references');
+
+    // A host that does not answer the timeline at all reads the same way.
+    const silent = await fetchReferenceDetail({
+      octokit: graphqlReturning({ __typename: 'Issue', number: 4, comments: { totalCount: 0, nodes: [] } }), owner: 'acme', repo: 'app', number: 4,
+    });
+    expect(silent).not.toHaveProperty('references');
+  });
+
+  it('drops a cross-reference node it cannot link, and gives no title or repository it was not told', async () => {
+    const detail = await fetchReferenceDetail({ octokit: graphqlReturning({
+      __typename: 'Issue',
+      number: 3,
+      comments: { totalCount: 0, nodes: [] },
+      timelineItems: { nodes: [
+        null,
+        { createdAt: '2026-10-02T09:00:00Z', willCloseTarget: false, actor: null, source: null },
+        // A source the query read no fields for carries no link.
+        { createdAt: '2026-10-02T09:00:00Z', willCloseTarget: false, actor: null, source: { __typename: 'Discussion', number: 5 } },
+        // No URL: nothing the preview could open.
+        { createdAt: '2026-10-02T09:00:00Z', willCloseTarget: false, actor: null, source: { __typename: 'Issue', number: 22, title: 'No link' } },
+        { createdAt: '2026-10-02T09:00:00Z', actor: null, source: { __typename: 'Issue', number: 21, url: 'https://github.com/acme/app/issues/21' } },
+      ] },
+    }), owner: 'acme', repo: 'app', number: 3 });
+    expect(detail?.references).toEqual([
+      { kind: 'issue', number: 21, url: 'https://github.com/acme/app/issues/21', createdAt: '2026-10-02T09:00:00Z', author: null },
+    ]);
+  });
+
   it('reads the stack a PR is a layer of, bottom first, and leaves it unknown where the host has none', async () => {
     const layer = (number, position, state = 'OPEN') => ({
       position,

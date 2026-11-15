@@ -1078,9 +1078,9 @@ export function registerProviderRoutes(app, {
       boundRead('issues', suffix, async ({ req, res, impl, instance, directory, trustedContext }) => {
         const session = await sessionFor(impl, instance, trustedContext.accountId);
         return res.json(await impl.resources[method]({
-          session,
-          directory,
+          session, directory,
           number: requestIssueNumber(req.query?.number),
+          includeTimeline: req.query?.timeline === '1',
           project: optionalProject(req),
           context: trustedContext, remote: trustedContext.primaryRemote,
         }));
