@@ -3,7 +3,7 @@ import { Window } from 'happy-dom';
 import { act, createElement } from 'react';
 import type { Root } from 'react-dom/client';
 
-import type { RepositoryIssueReference, RepositoryReferenceDetail, RepositoryReferenceLink } from '@/lib/api/types';
+import type { RepositoryIssueReference, RepositoryReferenceDetail, RepositoryReferenceLink, SourceControlReadContext } from '@/lib/api/types';
 
 mock.module('@/components/chat/MarkdownRenderer', () => ({
   SimpleMarkdownRenderer: ({ content }: { content: string }) => createElement('div', null, content),
@@ -161,6 +161,25 @@ describe('items that mentioned the previewed one', () => {
     expect([...host.querySelectorAll('h4')].some((heading) => heading.textContent === 'Linked issues')).toBe(false);
     expect(host.textContent).not.toContain('Linked issues');
     expect(chips()).toEqual([]);
+  });
+
+  test('the referenceDetail route keeps its mentions into the preview', async () => {
+    const { fetchRepositoryReferenceDetail } = await import('../../../../web/src/api/repository-references');
+    const context: SourceControlReadContext = {
+      provider: 'github', instance: 'github.com', accountId: 'github.com#1',
+      repositoryId: 'repo-1', bindingRevision: 1, directory: '/repo', primaryRemote: 'origin',
+    };
+    const result = await fetchRepositoryReferenceDetail(async () => Response.json({
+      connected: true,
+      detail: { number: 7, comments: [], commentTotal: 0, pull: null, references: [mention()] },
+    }), context, { owner: 'acme', repo: 'app', number: 7 });
+    if (!result.connected || !result.detail) throw new Error('expected a detail');
+
+    await show(result.detail);
+
+    expect(rowText(rows()[0]!)).toContain('mentioned this in');
+    expect(rowText(rows()[0]!)).toContain('riri');
+    expect(chips().map((chip) => chip.textContent)).toEqual(['#8']);
   });
 
   test('clicking a chip opens the mention the way the item’s other links do', async () => {

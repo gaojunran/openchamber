@@ -24,6 +24,7 @@ import type { ChangeRequestReviewStateResult } from '@openchamber/ui/lib/source-
 import type { RuntimeFetchOptions } from '@openchamber/ui/lib/runtime-fetch';
 import { z } from 'zod';
 import { providerPath } from './source-control-providers';
+import { sourceReferenceLinkSchema } from './source-reference-link';
 
 type ReferencesFetch = (input: string, init?: RuntimeFetchOptions) => Promise<Response>;
 
@@ -139,6 +140,7 @@ const referenceDetailResultSchema = z.discriminatedUnion('connected', [
         answer: z.object({ chosen: z.boolean(), canChange: z.boolean() }).optional(),
       })),
       commentTotal: z.number(),
+      references: z.array(sourceReferenceLinkSchema).optional(),
       pull: z.object({
         reviewDecision: z.enum(['approved', 'changes_requested', 'review_required']).nullable(),
         reviewers: z.array(z.object({ id: z.string(), login: z.string(), avatarUrl: z.string().optional() })).default([]),

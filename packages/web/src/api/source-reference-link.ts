@@ -1,4 +1,5 @@
 import type { SourceControlReferenceLink } from '@openchamber/ui/lib/api/types';
+import { z } from 'zod';
 
 type BoundaryScalar = string | number | boolean | null | undefined;
 
@@ -15,22 +16,22 @@ export const isHttpUrl = (value: BoundaryScalar): value is string => {
   }
 };
 
-const REFERENCE_KINDS: readonly SourceControlReferenceLink['kind'][] = ['issue', 'pull', 'discussion'];
+export const sourceReferenceLinkSchema = z.object({
+  kind: z.enum(['issue', 'pull', 'discussion']),
+  number: z.number().int().positive(),
+  title: z.string().optional(),
+  url: z.string().refine(isHttpUrl),
+  repo: z.string().optional(),
+  createdAt: z.string().nullable(),
+  author: z.object({ login: z.string().min(1), avatarUrl: z.string().optional() }).nullable().optional(),
+  willCloseTarget: z.boolean().optional(),
+});
 
 export const parseSourceReferenceLinks = (references: SourceControlReferenceLink[]): SourceControlReferenceLink[] => {
   if (!Array.isArray(references)) throw new Error('Source control response contained invalid issue references');
   return references.map((reference) => {
-    if (!reference || !REFERENCE_KINDS.includes(reference.kind) || !Number.isInteger(reference.number) || reference.number < 1
-      || !isHttpUrl(reference.url)
-      || (reference.title !== undefined && !isStringValue(reference.title))
-      || (reference.repo !== undefined && !isStringValue(reference.repo))
-      || (reference.createdAt !== null && !isNonEmptyString(reference.createdAt))
-      || (reference.willCloseTarget !== undefined && Object.prototype.toString.call(reference.willCloseTarget) !== '[object Boolean]')
-      || (reference.author !== undefined && reference.author !== null
-        && (!reference.author || !isNonEmptyString(reference.author.login)
-          || (reference.author.avatarUrl !== undefined && !isStringValue(reference.author.avatarUrl))))) {
-      throw new Error('Source control response contained an invalid reference link');
-    }
-    return reference;
+    const parsed = sourceReferenceLinkSchema.safeParse(reference);
+    if (!parsed.success) throw new Error('Source control response contained an invalid reference link');
+    return parsed.data;
   });
 };
