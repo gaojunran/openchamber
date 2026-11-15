@@ -829,12 +829,76 @@ describe('Gitea cross-references', () => {
     ]);
   });
 
+  it('reads a comment that mentions the item as the comment, not as a bare reference', async () => {
+    const { service } = setup({
+      'GET /repos/bob/app/issues/6': fixtures.issue,
+      'GET /repos/bob/app/issues/6/timeline': [
+        timelineEntry({
+          id: 15,
+          type: 'comment_ref',
+          ref_issue: {
+            id: 2, number: 2, title: 'Scratch: pull request demo', html_url: `${ORIGIN}/bob/app/pulls/2`,
+            repository: { full_name: 'bob/app' }, pull_request: { id: 2 },
+          },
+          ref_comment: {
+            id: 15, body: 'Refs #1 so the timeline has a cross-reference.',
+            user: { id: 9, login: 'nebula', avatar_url: `${ORIGIN}/avatars/nebula` },
+            created_at: '2026-11-16T03:03:02+08:00',
+          },
+          user: { id: 3, login: 'carol', avatar_url: `${ORIGIN}/avatars/carol` },
+          created_at: '2026-11-16T03:03:02+08:00',
+        }),
+        timelineEntry({
+          id: 16,
+          type: 'comment_ref',
+          ref_issue: {
+            id: 9, number: 9, title: 'Plain issue mention', html_url: `${ORIGIN}/bob/app/issues/9`,
+            repository: { full_name: 'bob/app' }, pull_request: null,
+          },
+          ref_comment: {
+            id: 16, body: 'Also refs #1.', user: { id: 9, login: 'nebula', avatar_url: `${ORIGIN}/avatars/nebula` },
+            created_at: '2026-11-16T04:00:00+08:00',
+          },
+          created_at: '2026-11-16T04:00:00+08:00',
+        }),
+      ],
+    });
+
+    const issue = await service.getIssue('/repo', 6, undefined, 'origin', { includeTimeline: true });
+
+    const nebula = { login: 'nebula', avatarUrl: `${ORIGIN}/avatars/nebula` };
+    expect(issue.references).toEqual([
+      {
+        kind: 'pull', number: 2, title: 'Scratch: pull request demo', url: `${ORIGIN}/bob/app/pulls/2`,
+        repo: 'bob/app', createdAt: '2026-11-16T03:03:02+08:00', author: nebula,
+      },
+      {
+        kind: 'issue', number: 9, title: 'Plain issue mention', url: `${ORIGIN}/bob/app/issues/9`,
+        repo: 'bob/app', createdAt: '2026-11-16T04:00:00+08:00', author: nebula,
+      },
+    ]);
+  });
+
+  it('keeps one row when the same item is mentioned more than once', async () => {
+    const { service } = setup({
+      'GET /repos/bob/app/issues/6': fixtures.issue,
+      'GET /repos/bob/app/issues/6/timeline': [
+        timelineEntry({ id: 20, type: 'comment_ref', ref_comment: { created_at: '2026-10-24T10:00:00Z' } }),
+        timelineEntry({ id: 21, type: 'comment_ref', ref_comment: { created_at: '2026-10-23T10:00:00Z' } }),
+      ],
+    });
+
+    const issue = await service.getIssue('/repo', 6, undefined, 'origin', { includeTimeline: true });
+    expect(issue.references).toHaveLength(1);
+    expect(issue.references[0].createdAt).toBe('2026-10-23T10:00:00Z');
+  });
+
   it('ignores timeline events that name no readable item', async () => {
     const { service } = setup({
       'GET /repos/bob/app/issues/6': fixtures.issue,
       'GET /repos/bob/app/issues/6/timeline': [
-        // Comments, commits and the rest of the timeline are not references.
-        timelineEntry({ id: 1, type: 'comment_ref' }),
+        // A comment reference needs its own ref_issue to point anywhere.
+        timelineEntry({ id: 1, type: 'comment_ref', ref_issue: undefined }),
         timelineEntry({ id: 2, type: 'commit_ref' }),
         // A reference the timeline names without a number or a URL is dropped.
         timelineEntry({ id: 3, ref_issue: { number: '12', html_url: `${ORIGIN}/bob/app/issues/12` } }),
