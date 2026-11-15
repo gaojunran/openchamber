@@ -38,6 +38,8 @@ import {
   searchGitHubReferencesAcross,
 } from './reference-search.js';
 import { fetchPullStack } from './pull-stack.js';
+import { createPRContextCache } from './context-cache.js';
+import { fetchReferenceLinks } from './references.js';
 import { fetchReviewState } from './review-draft.js';
 
 /**
@@ -90,33 +92,6 @@ export const gitHubRefusalMessage = (error) => {
  * its target's entries, and a read that started before such an invalidation
  * does not store what it read.
  */
-function createContextCache() {
-  const entries = new Map();
-  let epoch = 0;
-  return Object.freeze({
-    begin: () => epoch,
-    read: (key, includeCheckDetails) => {
-      const entry = entries.get(key);
-      return entry && Date.now() - entry.fetchedAt < PR_CONTEXT_CACHE_TTL_MS && (entry.includeCheckDetails || !includeCheckDetails)
-        ? entry.data
-        : null;
-    },
-    store: (key, scope, data, includeCheckDetails, started) => {
-      if (started !== epoch) return;
-      entries.delete(key);
-      entries.set(key, { data, includeCheckDetails, fetchedAt: data.fetchedAt, scope });
-      if (entries.size > PR_CONTEXT_CACHE_MAX_ENTRIES) entries.delete(entries.keys().next().value);
-    },
-    /** Every entry whose scope matches all given fields, in any directory. */
-    invalidate: (scope) => {
-      epoch += 1;
-      for (const [key, entry] of entries) {
-        if (Object.entries(scope).every(([field, value]) => entry.scope[field] === value)) entries.delete(key);
-      }
-    },
-  });
-}
-
 export function createGitHubResources({
   load,
   accountOf,
@@ -126,7 +101,7 @@ export function createGitHubResources({
   readContributorProvenance,
   invalidateAccount,
 }) {
-  const contextCache = createContextCache();
+  const contextCache = createPRContextCache(PR_CONTEXT_CACHE_TTL_MS, PR_CONTEXT_CACHE_MAX_ENTRIES);
   // The login a merge-permission check resolves is memoized per host and
   // credential: an enterprise host's login must never be satisfied from (or
   // replayed onto) the github.com account's memo, and a changed credential
@@ -464,7 +439,7 @@ export function createGitHubResources({
       return result;
     },
 
-    changeRequestContext: async ({ session, context, directory, number, project, remote, includeDiff, includeCIDetails }) => {
+    changeRequestContext: async ({ session, context, directory, number, project, remote, includeDiff, includeCIDetails, includeTimeline }) => {
       const { octokit } = accountOf(session);
       const identity = identityOf(session);
       const requestedRepo = project ? { owner: project.owner, repo: project.name } : null;
@@ -476,7 +451,7 @@ export function createGitHubResources({
         primaryRemote: remote,
         number,
       };
-      const cacheKey = JSON.stringify([directory, number, includeDiff, requestedRepo ? `${requestedRepo.owner}/${requestedRepo.repo}` : null, scope, context?.linked === true]);
+      const cacheKey = JSON.stringify([directory, number, includeDiff, includeTimeline === true, requestedRepo ? `${requestedRepo.owner}/${requestedRepo.repo}` : null, scope, context?.linked === true]);
       const cached = contextCache.read(cacheKey, includeCIDetails);
       if (cached) return cached;
       const started = contextCache.begin();
@@ -537,6 +512,10 @@ export function createGitHubResources({
       if (isPlainObject(prData.stack)) {
         const stack = await fetchPullStack({ octokit, owner: repo.owner, repo: repo.repo, number }).catch(() => undefined);
         if (stack !== undefined) result.stack = stack;
+      }
+      if (includeTimeline) {
+        const references = await fetchReferenceLinks({ octokit, owner: repo.owner, repo: repo.repo, number }).catch(() => []);
+        if (references.length > 0) result.references = references;
       }
       contextCache.store(cacheKey, scope, result, includeCIDetails, started);
       return result;
@@ -605,14 +584,17 @@ export function createGitHubResources({
     },
 
     /** The issue, null for a selector outside the bound network; a pull request number is refused. */
-    getIssue: async ({ session, context, directory, number, project, remote }) => {
+    getIssue: async ({ session, context, directory, number, project, remote, includeTimeline }) => {
       const { octokit } = accountOf(session);
       const identity = identityOf(session);
       const repo = await resolveRepoForRequest(octokit, directory, project ? { owner: project.owner, repo: project.name } : null, remote, { linked: context?.linked });
       if (!repo) return null;
       const issue = requireGitHubIssue((await octokit.rest.issues.get({ owner: repo.owner, repo: repo.repo, issue_number: number }))?.data, 'GitHub returned an invalid issue');
       if (issue.pull_request) throw responseError(400, { error: 'Not a GitHub issue' });
-      return mapIssue(issue, mapProject(repo, identity), identity);
+      const mapped = mapIssue(issue, mapProject(repo, identity), identity);
+      if (!includeTimeline) return mapped;
+      const references = await fetchReferenceLinks({ octokit, owner: repo.owner, repo: repo.repo, number }).catch(() => []);
+      return references.length > 0 ? { ...mapped, references } : mapped;
     },
 
     issueComments: async ({ session, context, directory, number, project, remote }) => {

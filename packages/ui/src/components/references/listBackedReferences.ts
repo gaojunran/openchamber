@@ -279,8 +279,14 @@ export const fetchListBackedReferenceDetail = async (
     if (reference.kind === 'discussion') throw new Error(NO_LISTED_DISCUSSIONS);
     const project = { owner: reference.sourceRepo.owner, name: reference.sourceRepo.repo };
     if (reference.kind === 'issue') {
-        const comments = (await reads.issueComments(context, reference.number, project)).map(toComment).sort(byCreation);
-        return { number: reference.number, comments: comments.slice(-50), commentTotal: comments.length, pull: null };
+        const [issue, notes] = await Promise.all([
+            reads.issueGet(context, reference.number, project, { includeTimeline: true }),
+            reads.issueComments(context, reference.number, project),
+        ]);
+        const comments = notes.map(toComment).sort(byCreation);
+        const detail: RepositoryReferenceDetail = { number: reference.number, comments: comments.slice(-50), commentTotal: comments.length, pull: null };
+        if (issue?.references && issue.references.length > 0) detail.references = issue.references;
+        return detail;
     }
     // The size comes from the changed files, which the neutral read only lists with their
     // diffs; the pipeline's totals from its jobs, read only with CI details.
@@ -291,10 +297,12 @@ export const fetchListBackedReferenceDetail = async (
         ...threadedComments([...changeRequestContext.issueComments, ...changeRequestContext.reviewComments]),
         ...(changeRequestContext.verdicts ?? []).map(toVerdict),
     ].sort(byCreation);
-    return {
+    const detail: RepositoryReferenceDetail = {
         number: reference.number,
         comments: comments.slice(-50),
         commentTotal: changeRequestContext.issueComments.length,
         pull: pullDetail(changeRequestContext),
     };
+    if (changeRequestContext.references && changeRequestContext.references.length > 0) detail.references = changeRequestContext.references;
+    return detail;
 };

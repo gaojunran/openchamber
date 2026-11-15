@@ -1,4 +1,7 @@
 import type { SourceControlProviderId } from './providers/descriptor';
+import type { CommentThreadRef, SourceControlReferenceLink } from './references';
+
+export type { SourceControlReferenceLink } from './references';
 
 /** Open: any id the connected server serves; an id the registry does not hold reads through the fallback descriptor. */
 export type SourceControlProvider = SourceControlProviderId;
@@ -338,6 +341,7 @@ export interface Issue extends SourceControlIdentity {
   labels?: Label[];
   createdAt?: string;
   updatedAt?: string;
+  references?: SourceControlReferenceLink[];
 }
 
 export interface IssueComment extends SourceControlIdentity {
@@ -353,18 +357,6 @@ export interface IssueComment extends SourceControlIdentity {
   canDelete?: boolean;
   /** The thread the comment is in, when read for the preview's timeline (GitLab merge requests). */
   thread?: CommentThreadRef;
-}
-
-export interface CommentThreadRef {
-  id: string;
-  resolved: boolean;
-  /** Whether the thread is one that waits to be resolved. */
-  resolvable: boolean;
-  /** Whether this comment opened the thread; the others answer it. */
-  first: boolean;
-  /** This account's permissions, when the host said; absent means unknown. */
-  canResolve?: boolean;
-  canReply?: boolean;
 }
 
 export interface ChangeRequest extends SourceControlIdentity {
@@ -603,6 +595,7 @@ export interface ChangeRequestContext {
   verdicts?: ChangeRequestVerdict[];
   /** With `includeTimeline`: who is asked to review. */
   reviewers?: SourceControlUser[];
+  references?: SourceControlReferenceLink[];
   /**
    * The stack the change request is a layer of: GitHub's own (sent only for
    * a layer of one), or on GitLab the chain of open merge requests by branch

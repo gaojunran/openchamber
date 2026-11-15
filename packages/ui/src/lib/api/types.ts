@@ -2091,6 +2091,7 @@ export interface SourceControlAPI {
     context: SourceControlReadContext,
     number: number,
     project?: { owner: string; name: string },
+    options?: { includeTimeline?: boolean },
   ): Promise<Issue | null>;
   issueComments(
     context: SourceControlReadContext,

@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 
 import { checkContextSchema, isGraphqlRateLimitError, parseSummaryRefs, summarizeCheckContexts, toDiscussionState } from './pr-summaries.js';
 import { fetchPullStack } from './pull-stack.js';
+import { timelineItemsSchema, toReferences } from './references.js';
 
 const REFERENCE_PAGE_SIZE = 30;
 const ACROSS_REPO_CHUNK_SIZE = 40;
@@ -372,21 +373,6 @@ const detailCommentSchema = z.object({
   viewerCanDelete: z.boolean().optional(),
 });
 
-const crossReferenceSchema = z.object({
-  createdAt: z.string().nullable().optional(),
-  willCloseTarget: z.boolean().nullable().optional(),
-  actor: z.object({ login: z.string(), avatarUrl: z.string().nullable().optional() }).nullable().optional(),
-  source: z.object({
-    __typename: z.string(),
-    number: z.number().int().optional(),
-    title: z.string().optional(),
-    url: z.string().optional(),
-    repository: z.object({ nameWithOwner: z.string() }).nullable().optional(),
-  }).nullable().optional(),
-}).nullable();
-
-const timelineItemsSchema = z.object({ nodes: z.array(crossReferenceSchema).nullable() }).optional();
-
 const discussionDetailSchema = z.object({
   repository: z.object({
     discussion: z.object({
@@ -626,22 +612,6 @@ const editableText = (item) => {
   if (item.viewerCanUpdate !== undefined) text.viewerCanUpdate = item.viewerCanUpdate;
   return text;
 };
-
-const toReferences = (item) => (item.timelineItems?.nodes ?? []).flatMap((node) => {
-  const source = node?.source;
-  if (!source || !Number.isSafeInteger(source.number) || !source.url) return [];
-  const reference = {
-    kind: source.__typename === 'PullRequest' ? 'pull' : 'issue',
-    number: source.number,
-    url: source.url,
-    createdAt: node.createdAt ?? null,
-    author: toAuthor(node.actor ?? null),
-  };
-  if (source.title) reference.title = source.title;
-  if (source.repository?.nameWithOwner) reference.repo = source.repository.nameWithOwner;
-  if (node.willCloseTarget === true || node.willCloseTarget === false) reference.willCloseTarget = node.willCloseTarget;
-  return [reference];
-});
 
 /**
  * Comments of one issue or PR, oldest first, and for a PR its size, review

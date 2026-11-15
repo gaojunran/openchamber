@@ -13,11 +13,12 @@ import type {
   UpdateChangeRequestInput,
 } from '@openchamber/ui/lib/api/types';
 import { SourceControlInstanceOtherProviderError } from '@openchamber/ui/lib/api/types';
+import type { RuntimeFetchOptions } from '@openchamber/ui/lib/runtime-fetch';
 import { buildManagedAccountOptions } from '@openchamber/ui/lib/source-control/identity';
 import { githubLikeDescriptor } from '@openchamber/ui/lib/source-control/providers/descriptor.fixture';
 import { configureWebTransportBinding, createWebSourceControlAPI, removeWebTransportBinding } from './source-control';
 
-const runtimeFetchMock = vi.fn(async (): Promise<Response> => Response.json({}));
+const runtimeFetchMock = vi.fn(async (_input?: string, _init?: RuntimeFetchOptions): Promise<Response> => Response.json({}));
 const identity: SourceControlIdentity = { provider: 'github', instance: 'https://GitHub.com/' };
 const readContext: SourceControlReadContext = {
   ...identity,
@@ -594,6 +595,34 @@ describe('createWebSourceControlAPI', () => {
       query: new URLSearchParams({ ...base, owner: 'openchamber', repo: 'openchamber' }),
       headers: { Accept: 'application/json' },
     });
+  });
+
+  it('asks for an issue timeline only when the caller does', async () => {
+    const issue = {
+      ...githubIdentity, id: 'acme/app#1', number: 1, project: githubProject('acme', 'app'),
+      title: 'First issue', url: 'https://github.com/acme/app/issues/1', state: 'open',
+      references: [{
+        kind: 'issue', number: 5, title: 'Mentioning issue', url: 'https://github.com/acme/app/issues/5',
+        repo: 'acme/app', createdAt: '2026-11-12T16:47:27Z', author: { login: 'gaojunran' }, willCloseTarget: false,
+      }],
+    };
+    const queries: string[] = [];
+    let call = 0;
+    const fetch = vi.fn(async (_input?: string, init?: RuntimeFetchOptions): Promise<Response> => {
+      queries.push(String(init?.query ?? ''));
+      call += 1;
+      return Response.json(call === 1 ? issue : { ...issue, references: undefined });
+    });
+    const api = createWebSourceControlAPI({ fetch });
+
+    const asked = await api.issueGet(readContext, 1, { owner: 'acme', name: 'app' }, { includeTimeline: true });
+    expect(asked?.references).toHaveLength(1);
+    expect(asked?.references?.[0]).toMatchObject({ kind: 'issue', number: 5, repo: 'acme/app', author: { login: 'gaojunran' } });
+    expect(queries[0]).toContain('timeline=1');
+
+    const plain = await api.issueGet(readContext, 1, { owner: 'acme', name: 'app' });
+    expect(plain).not.toHaveProperty('references');
+    expect(queries[1]).not.toContain('timeline=1');
   });
 
   it('rejects malformed issue and project read payloads', async () => {

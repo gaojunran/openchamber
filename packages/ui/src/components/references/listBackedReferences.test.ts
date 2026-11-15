@@ -132,6 +132,32 @@ describe('list-backed references', () => {
     expect(detail.pull).toMatchObject({ commits: [{ sha: 'aaa', headline: 'first', author: null, authorName: 'Sam' }], commitTotal: null });
   });
 
+  test('the preview reads an issue, and its mentions, through issueGet', async () => {
+    const page = await fetchListBackedReferencePage(reads(), context, provider, 'issue', DEFAULT_REPOSITORY_FILTER, '', null);
+    if (page.kind !== 'page' || !page.items[0]) throw new Error('expected a page');
+    let askedTimeline: boolean | undefined;
+    const detail = await fetchListBackedReferenceDetail(reads({
+      issueGet: async (_context, _number, _project, options) => {
+        askedTimeline = options?.includeTimeline;
+        return {
+          ...issue,
+          references: [{
+            kind: 'issue', number: 9, title: 'Elsewhere', url: 'https://gitlab.com/group/sub/app/-/issues/9',
+            repo: 'group/sub/app', createdAt: '2026-01-03T00:00:00Z', author: { login: 'sam' }, willCloseTarget: false,
+          }],
+        };
+      },
+      issueComments: async () => [{ ...identity, id: 'c1', url: 'u', body: 'A note', createdAt: '2026-01-02T00:00:00Z' }],
+    }), context, page.items[0]);
+
+    expect(askedTimeline).toBe(true);
+    expect(detail.comments.map((comment) => comment.body)).toEqual(['A note']);
+    expect(detail.references).toEqual([{
+      kind: 'issue', number: 9, title: 'Elsewhere', url: 'https://gitlab.com/group/sub/app/-/issues/9',
+      repo: 'group/sub/app', createdAt: '2026-01-03T00:00:00Z', author: { login: 'sam' }, willCloseTarget: false,
+    }]);
+  });
+
   test('a GitLab note carries its id and write capabilities into the preview', async () => {
     const page = await fetchListBackedReferencePage(reads(), context, provider, 'pull', DEFAULT_REPOSITORY_FILTER, '', null);
     if (page.kind !== 'page' || !page.items[0]) throw new Error('expected a page');
