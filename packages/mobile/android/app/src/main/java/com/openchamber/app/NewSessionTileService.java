@@ -14,12 +14,12 @@ import android.service.quicksettings.TileService;
  * Control Center control (OpenChamberControl.swift).
  *
  * A tile is a toggle in the panel's model, but there is nothing to toggle here, so it always
- * reports inactive and the tap is what matters: it opens the same openchamber://new-session
- * deep link the iOS control opens, which keeps routing in the web layer.
+ * reports inactive and the tap is what matters: it opens the same openchamber://new deep link
+ * the iOS control opens, which keeps routing in the web layer.
  */
 public class NewSessionTileService extends TileService {
 
-    private static final String NEW_SESSION_URL = "openchamber://new-session";
+    private static final String NEW_SESSION_URL = "openchamber://new";
 
     @Override
     public void onStartListening() {
@@ -41,6 +41,16 @@ public class NewSessionTileService extends TileService {
     @Override
     public void onClick() {
         super.onClick();
+        // The shade is reachable while the device is locked, and an activity started from a
+        // tile there stays behind the keyguard: the tap would look like nothing happened.
+        if (isLocked()) {
+            unlockAndRun(this::launchNewSession);
+            return;
+        }
+        launchNewSession();
+    }
+
+    private void launchNewSession() {
         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(NEW_SESSION_URL));
         // Explicit component: the tile can be tapped while the app is not running, and an
         // explicit intent reaches the activity even when the scheme is not the entry point.
