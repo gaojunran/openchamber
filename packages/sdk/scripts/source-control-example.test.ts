@@ -245,6 +245,21 @@ describe('source-control provider example', () => {
     expect(stale).toMatchObject({ ok: false, error: { status: 409, code: 'SOURCE_CONTROL_MUTATION_TARGET_MISMATCH' } });
   });
 
+  test('a pull request context names each reviewer\'s state, and leaves the field out when there is none', async () => {
+    const context = await data('changeRequestContext', {
+      ...read(), number: 2, includeDiff: false, includeCIDetails: false, includeTimeline: true,
+    });
+    expect(field(context, 'reviewerStates')).toEqual([
+      { user: { id: '9', username: 'ann' }, state: 'approved' },
+      { user: { id: '10', username: 'bob' }, state: 'changes_requested' },
+      { user: { id: '11', username: 'cid' }, state: 'pending' },
+    ]);
+    const none = await data('changeRequestContext', {
+      ...read(), number: 3, includeDiff: false, includeCIDetails: false, includeTimeline: true,
+    });
+    expect(field(none, 'reviewerStates')).toBeNull();
+  });
+
   test('a comment is edited or deleted only on the item it belongs to', async () => {
     const commentsOn = async (number: number): Promise<Array<{ id: number; body: string }>> => (
       await fetch(`${forge.origin}/api/v1/repos/mona/teapot/issues/${number}/comments`, { headers: { authorization: 'token good' } })

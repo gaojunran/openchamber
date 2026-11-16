@@ -1,4 +1,7 @@
 import type { SourceControlProviderId } from './providers/descriptor';
+import type { ChangeRequestReviewerState, ChangeRequestVerdict } from './review-types';
+
+export type { ChangeRequestReviewerState, ChangeRequestVerdict, ReviewerStateValue } from './review-types';
 
 /** Open: any id the connected server serves; an id the registry does not hold reads through the fallback descriptor. */
 export type SourceControlProvider = SourceControlProviderId;
@@ -554,14 +557,6 @@ export interface ChangeRequestCommit {
   url: string | null;
 }
 
-/** A review verdict on a change request: an approval or a request for changes. */
-export interface ChangeRequestVerdict {
-  state: 'approved' | 'changes_requested';
-  author?: SourceControlUser;
-  createdAt: string | null;
-  url: string;
-}
-
 /**
  * Pull requests stacked on one another, bottom layer first: each targets the
  * branch of the one below, and the bottom one targets `base`. GitHub keeps a
@@ -603,6 +598,8 @@ export interface ChangeRequestContext {
   verdicts?: ChangeRequestVerdict[];
   /** With `includeTimeline`: who is asked to review. */
   reviewers?: SourceControlUser[];
+  /** Everyone who was asked to review and everyone who answered, one entry per person. Absent when the host did not say. */
+  reviewerStates?: ChangeRequestReviewerState[];
   /**
    * The stack the change request is a layer of: GitHub's own (sent only for
    * a layer of one), or on GitLab the chain of open merge requests by branch

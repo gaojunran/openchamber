@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   diffOfPatch, gerritTimestamp, liveChangeSummary, mapGerritChange, mapGerritFiles, mapGerritMessage, mapGerritProject,
-  mapGerritRelatedStack, mapGerritRevisions, mapGerritSubmitRequirements, mapGerritVoteLabels, patchsetRef, splitUnifiedDiff,
+  mapGerritRelatedStack, mapGerritRevisions, mapGerritReviewerStates, mapGerritSubmitRequirements, mapGerritVoteLabels, patchsetRef, splitUnifiedDiff,
 } from './mappers.js';
 import { fixtures, ORIGIN, PS3 } from './fixtures/fake-fetch.js';
 
@@ -17,6 +17,27 @@ describe('Gerrit mappers', () => {
     expect(mapGerritProject('platform/build/soong', identity)).toMatchObject({ owner: 'platform/build', name: 'soong' });
     expect(mapGerritProject('demo', identity)).toMatchObject({ id: 'demo', owner: '', name: 'demo', url: `${ORIGIN}/admin/repos/demo`, cloneUrl: `${ORIGIN}/a/demo` });
     expect(mapGerritProject('team/app/sub', identity)).toMatchObject({ owner: 'team/app', name: 'sub' });
+  });
+
+  it('reads per-person review state from Code-Review votes and pending reviewers', () => {
+    const account = (id, username) => ({ _account_id: id, username });
+    const raw = {
+      labels: { 'Code-Review': { all: [
+        { value: 2, ...account(1, 'ann') },
+        { value: 1, ...account(2, 'bo') },
+        { value: 0, ...account(3, 'cy') },
+        { value: -1, ...account(4, 'di') },
+        { value: -2, ...account(5, 'ed') },
+      ] } },
+      // A pending reviewer who already voted keeps the vote.
+      pending_reviewers: { REVIEWER: [account(6, 'fi'), account(1, 'ann')] },
+    };
+    expect(mapGerritReviewerStates(raw, identity).map(({ user, state }) => [user.username, state])).toEqual([
+      ['ann', 'approved'], ['bo', 'commented'], ['cy', 'commented'], ['di', 'changes_requested'], ['ed', 'changes_requested'], ['fi', 'pending'],
+    ]);
+    // A change with no Code-Review label says nothing rather than saying no one reviewed.
+    expect(mapGerritReviewerStates({ labels: {} }, identity)).toBeUndefined();
+    expect(mapGerritReviewerStates({}, identity)).toBeUndefined();
   });
 
   it('reads Gerrit timestamps as UTC', () => {

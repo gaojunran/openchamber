@@ -27,6 +27,7 @@ function setup(overrides = {}, options = {}) {
       edit: vi.fn(async (_id, _iid, options) => ({ ...openMR, draft: options.draft ?? false, title: options.title ?? openMR.title })),
       merge: vi.fn(async () => ({ ...openMR, state: 'merged' })),
       allDiffs: list([{ old_path: 'a.ts', new_path: 'a.ts', diff: '@@' }]),
+      showReviewers: vi.fn(async () => []),
     },
     MergeRequestNotes: { all: list([{ id: 4, body: 'Looks good', author: { id: 3, username: 'sam' } }]) },
     Jobs: { all: vi.fn(async () => [{ id: 8, name: 'test', status: 'running' }]) },
@@ -144,6 +145,54 @@ describe('GitLab resource service', () => {
     expect(result.verdicts).toMatchObject([{ state: 'approved', createdAt: '2026-10-02T11:00:00Z', author: { username: 'sam' } }]);
     expect(result.issueComments.map((comment) => comment.body)).toEqual(['Looks good']);
     expect(result.reviewers).toEqual([expect.objectContaining({ id: '7', username: 'ann' })]);
+  });
+
+  it('reads one state per reviewer only with the timeline', async () => {
+    const showReviewers = vi.fn(async () => [
+      { user: { id: 7, username: 'ann' }, state: 'approved' },
+      { user: { id: 8, username: 'bo' }, state: 'requested_changes' },
+      { user: { id: 9, username: 'cy' }, state: 'unreviewed' },
+      { user: { id: 10, username: 'di' }, state: 'reviewed' },
+    ]);
+    const { service } = setup({
+      MergeRequests: { ...setup().client.MergeRequests, showReviewers, allCommits: list([]) },
+      MergeRequestDiscussions: { all: list([]) },
+    });
+
+    const plain = await service.changeRequestContext('/repo', 5, {});
+    expect(plain).not.toHaveProperty('reviewerStates');
+    expect(showReviewers).not.toHaveBeenCalled();
+
+    const result = await service.changeRequestContext('/repo', 5, { includeTimeline: true });
+    expect(result.reviewerStates.map(({ user, state }) => [user.username, state])).toEqual([
+      ['ann', 'approved'], ['bo', 'changes_requested'], ['cy', 'pending'], ['di', 'commented'],
+    ]);
+  });
+
+  it('leaves reviewer state unknown when the instance has no reviewers endpoint', async () => {
+    const showReviewers = vi.fn(async () => { throw Object.assign(new Error('Not Found'), { status: 404 }); });
+    const { service } = setup({
+      MergeRequests: { ...setup().client.MergeRequests, showReviewers, allCommits: list([]) },
+      MergeRequestDiscussions: { all: list([]) },
+    });
+
+    const result = await service.changeRequestContext('/repo', 5, { includeTimeline: true });
+    expect(result).not.toHaveProperty('reviewerStates');
+  });
+
+  it('reads older approvals where the reviewers endpoint answers empty', async () => {
+    const { service } = setup({
+      MergeRequests: {
+        ...setup().client.MergeRequests,
+        showReviewers: vi.fn(async () => []),
+        allCommits: list([]),
+        show: vi.fn(async () => ({ ...openMR, approvals: { approved_by: [{ id: 11, username: 'eve' }] } })),
+      },
+      MergeRequestDiscussions: { all: list([]) },
+    });
+
+    const result = await service.changeRequestContext('/repo', 5, { includeTimeline: true });
+    expect(result.reviewerStates).toEqual([expect.objectContaining({ state: 'approved', user: expect.objectContaining({ username: 'eve' }) })]);
   });
 
   it('reads the chain of open merge requests stacked by branch around this one, as far as each link is the only one', async () => {

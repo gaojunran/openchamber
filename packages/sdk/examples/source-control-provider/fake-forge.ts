@@ -18,6 +18,8 @@ export const FAKE_FORGE_FORK = { owner: 'octo', name: 'teapot' };
 export const FAKE_FORGE_STRANGER = { owner: 'mona', name: 'kettle' };
 
 type ForgeComment = { id: number; body: string; created_at: string };
+type ForgePerson = { id: number; login: string; full_name?: string; email?: string; avatar_url?: string };
+type ForgeReview = { user: ForgePerson; state: string; stale?: boolean };
 type ForgeItem = {
   number: number;
   title: string;
@@ -25,7 +27,7 @@ type ForgeItem = {
   state: 'open' | 'closed';
   comments: ForgeComment[];
   /** `headRepo` is the id of the repository the head branch lives in. */
-  pull: null | { head: string; headRepo: number; base: string; sha: string; merged: boolean };
+  pull: null | { head: string; headRepo: number; base: string; sha: string; merged: boolean; requestedReviewers?: ForgePerson[]; reviews?: ForgeReview[] };
 };
 
 export type FakeForgeWrite = { method: string; path: string };
@@ -93,7 +95,18 @@ export const startFakeForge = async (): Promise<FakeForge> => {
   const treeAt = (sha: string) => trees.get(sha) ?? MAIN_TREE;
   const items: ForgeItem[] = [
     { number: 1, title: 'Kettle whistles too early', body: 'It whistles at 80°C.', state: 'open', comments: [], pull: null },
-    { number: 2, title: 'Steep longer', body: 'Three minutes, not two.', state: 'open', comments: [], pull: { head: 'feature', headRepo: 1, base: 'main', sha: SHA_B, merged: false } },
+    {
+      number: 2, title: 'Steep longer', body: 'Three minutes, not two.', state: 'open', comments: [],
+      pull: {
+        head: 'feature', headRepo: 1, base: 'main', sha: SHA_B, merged: false,
+        requestedReviewers: [{ id: 11, login: 'cid' }],
+        reviews: [
+          { user: { id: 9, login: 'ann' }, state: 'APPROVED' },
+          { user: { id: 10, login: 'bob' }, state: 'REQUEST_CHANGES', stale: true },
+          { user: { id: 11, login: 'cid' }, state: 'REQUEST_REVIEW' },
+        ],
+      },
+    },
   ];
   let commentId = 100;
   let origin = '';
@@ -152,6 +165,7 @@ export const startFakeForge = async (): Promise<FakeForge> => {
       head: branchOf(pull.head, pull.sha, pull.headRepo),
       base: branchOf(pull.base, branches.get(pull.base) ?? SHA_A),
       merge_base: MERGE_BASE,
+      requested_reviewers: pull.requestedReviewers ?? [],
     };
   };
   const byNumber = (value: string | undefined) => items.find((item) => item.number === Number(value));
@@ -236,6 +250,7 @@ export const startFakeForge = async (): Promise<FakeForge> => {
       }
       const item = byNumber(number);
       if (!item?.pull) return notFound;
+      if (method === 'GET' && action === 'reviews' && rest.length === 3) return { status: 200, body: item.pull.reviews ?? [] };
       if (method === 'GET' && rest.length === 2) return { status: 200, body: pullJson(item) };
       if (method === 'GET' && action === 'files' && rest.length === 3) {
         const base = treeAt(MERGE_BASE);

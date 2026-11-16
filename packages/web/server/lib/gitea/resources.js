@@ -5,7 +5,7 @@ import { changeRequestNetworkTarget } from '../source-control/repository-network
 import {
   asDraftTitle, asReadyTitle, branchRepoId, liveChangeRequestSummary, liveIssueSummary,
   mapGiteaChangedFile, mapGiteaCI, mapGiteaComment, mapGiteaCommit, mapGiteaIssue, mapGiteaPull, mapGiteaRepo,
-  mapGiteaReviewBody, mapGiteaReviewComment, mapGiteaUser, mapGiteaVerdict, splitUnifiedDiff,
+  mapGiteaReviewBody, mapGiteaReviewComment, mapGiteaReviewerStates, mapGiteaUser, mapGiteaVerdict, splitUnifiedDiff, SUBMITTED_REVIEW_STATES,
 } from './mappers.js';
 import { resolveGiteaReposFromDirectory } from './repo.js';
 
@@ -49,9 +49,6 @@ const labelFilter = (labels, label) => {
   return labels.join(',');
 };
 const REVIEW_EVENTS = Object.freeze({ approve: 'APPROVED', 'request-changes': 'REQUEST_CHANGES', comment: 'COMMENT' });
-
-/** Review states that keep a user among a pull request's reviewers; `REQUEST_REVIEW` and `PENDING` do not. */
-const SUBMITTED_REVIEW_STATES = new Set(['APPROVED', 'REQUEST_CHANGES', 'COMMENT']);
 
 const statusOf = (error) => error?.status ?? error?.response?.status;
 const notFound = (message) => Object.assign(new Error(message), { status: 404 });
@@ -504,6 +501,7 @@ export function createGiteaResourceService({
           const mapped = mapGiteaUser(user, identity);
           return mapped ? [mapped] : [];
         }),
+        reviewerStates: mapGiteaReviewerStates(reviews, raw.requested_reviewers, identity),
         verdicts: reviews.flatMap((review) => {
           const mapped = mapGiteaVerdict(review, identity, request.url);
           return mapped ? [mapped] : [];

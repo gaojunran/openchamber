@@ -87,6 +87,8 @@ import { isExtensionProviderId, isProviderUserId } from '../../server/lib/source
 import type { SourceControlProviderDescriptor } from '@openchamber/ui/lib/source-control/providers/descriptor';
 import { fetchChangeRequestListStatuses, fetchChangeRequestReviewState, fetchRepositoryReferenceDetail, fetchRepositoryReferences, fetchRepositoryReferencesAcross } from './repository-references';
 import { BUILT_IN_SOURCE_CONTROL_PROVIDERS, fetchSourceControlProviders, providerPath } from './source-control-providers';
+import { parseReviewerStates } from './review-state';
+import { isBooleanValue, isNonEmptyString, isNumberValue, isPositiveSafeInteger, isStringValue, type BoundaryScalar } from './boundary-guards';
 
 interface ErrorResponse {
   error?: string;
@@ -1062,12 +1064,6 @@ const parseSourceComment = (comment: IssueComment, identity: SourceControlIdenti
   return result;
 };
 
-type BoundaryScalar = string | number | boolean | null | undefined;
-const isStringValue = (value: BoundaryScalar): value is string => Object.prototype.toString.call(value) === '[object String]';
-const isBooleanValue = (value: BoundaryScalar): value is boolean => Object.prototype.toString.call(value) === '[object Boolean]';
-const isNumberValue = (value: BoundaryScalar): value is number => Object.prototype.toString.call(value) === '[object Number]';
-const isNonEmptyString = (value: BoundaryScalar): value is string => isStringValue(value) && value.trim().length > 0;
-const isPositiveSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 1;
 // A binding revision of 0 is the unbound repository, read with the account the client is signed in to.
 const isNonNegativeSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 0;
 const isValidId = (value: string | number | undefined): boolean => isNonEmptyString(value) || Number.isFinite(value);
@@ -1696,6 +1692,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
         const stack = parseOptionalStack(payload.stack);
         if (stack) result.stack = stack;
       }
+      if (payload.reviewerStates !== undefined) result.reviewerStates = parseReviewerStates(payload.reviewerStates, normalized, parseSourceUser);
       // A review host's labels, requirements and revisions; absent for every other host.
       if (payload.voteLabels !== undefined) {
         if (!Array.isArray(payload.voteLabels)) throw new Error('Source control response contained invalid vote labels');

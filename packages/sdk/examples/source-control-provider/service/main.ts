@@ -6,7 +6,8 @@
 // OpenChamber adds the token and keeps the request on the instance.
 import { execFile } from 'node:child_process';
 import http from 'node:http';
-
+import type { GiteaPerson, GiteaReview, ReviewerStatesApi } from './reviewer-states.ts';
+import type { DiffApi } from './diff.ts';
 import {
   SOURCE_CONTROL_PROVIDER_ERROR_MESSAGE_MAX,
   SOURCE_CONTROL_PROVIDER_PATH,
@@ -30,6 +31,11 @@ import {
   type SourceControlProviderSession,
   type SourceControlReconcileData,
 } from '@openchamber/sdk';
+
+const reviewerStatesPath = `./reviewer-states${'.js'}`;
+const { withReviewerStates }: ReviewerStatesApi = await import(reviewerStatesPath);
+const diffPath = `./diff${'.js'}`;
+const { mapChangedFile, splitUnifiedDiff }: DiffApi = await import(diffPath);
 
 const port = Number(process.env.OPENCHAMBER_SERVICE_PORT);
 const serviceToken = process.env.OPENCHAMBER_SERVICE_TOKEN ?? '';
@@ -59,6 +65,7 @@ type GiteaPull = GiteaIssue & {
   draft?: boolean; merged?: boolean; mergeable?: boolean; head: GiteaBranchRef; base: GiteaBranchRef;
   /** The commit the pull request's diff is taken against. */
   merge_base?: string;
+  requested_reviewers?: GiteaPerson[];
 };
 type GiteaChangedFile = { filename: string; status?: string; additions?: number; deletions?: number; changes?: number };
 type GiteaComment = {
@@ -183,10 +190,6 @@ type Comment = Identity & Dated & {
   /** Whether the signed-in account may replace or remove it; both say so rather than being left out. */
   canUpdate?: boolean; canDelete?: boolean;
 };
-type ChangedFile = {
-  path: string; status: 'added' | 'removed' | 'renamed' | 'modified';
-  additions?: number; deletions?: number; changes?: number; patch?: string;
-};
 type ChangeRequestStatus = {
   identity: Identity; project: Project; branch: string; changeRequest: ChangeRequest | null; ci: null;
   canMerge?: boolean; resolvedRemoteName: string | null; defaultBranch: string | null;
@@ -289,39 +292,6 @@ const mapComment = (call: Call, raw: GiteaComment, fallbackUrl: string): Comment
   comment.canDelete = mine;
   stamp(comment, raw);
   return comment;
-};
-
-const FILE_STATUSES = new Map<string, ChangedFile['status']>([['added', 'added'], ['deleted', 'removed'], ['removed', 'removed'], ['renamed', 'renamed']]);
-
-const mapChangedFile = (raw: GiteaChangedFile): ChangedFile => {
-  const file: ChangedFile = { path: raw.filename, status: FILE_STATUSES.get(raw.status ?? '') ?? 'modified' };
-  if (raw.additions !== undefined) file.additions = raw.additions;
-  if (raw.deletions !== undefined) file.deletions = raw.deletions;
-  if (raw.changes !== undefined) file.changes = raw.changes;
-  return file;
-};
-
-/**
- * A unified diff split per file, keyed by the file's new path (its old path
- * for a deletion), each part keeping its own `diff --git` header: the same
- * split OpenChamber's built-in Gitea host makes.
- */
-const splitUnifiedDiff = (diff: string): Map<string, string> => {
-  const parts = new Map<string, string>();
-  const chunks = diff.split(/^(?=diff --git )/m).filter((chunk) => chunk.startsWith('diff --git '));
-  for (const chunk of chunks) {
-    const lines = chunk.split('\n');
-    const plus = lines.find((line) => line.startsWith('+++ '));
-    const minus = lines.find((line) => line.startsWith('--- '));
-    const renamed = lines.find((line) => line.startsWith('rename to '));
-    let path = '';
-    if (plus && plus !== '+++ /dev/null') path = plus.slice(4).replace(/^b\//, '');
-    else if (renamed) path = renamed.slice('rename to '.length);
-    else if (minus && minus !== '--- /dev/null') path = minus.slice(4).replace(/^a\//, '');
-    else path = lines[0].match(/^diff --git a\/.+? b\/(.+)$/)?.[1] ?? '';
-    if (path) parts.set(path.replace(/\t.*$/, ''), chunk.endsWith('\n') ? chunk : `${chunk}\n`);
-  }
-  return parts;
 };
 
 const listState = (state: string): string => {
@@ -484,24 +454,21 @@ const handlers = {
 
   changeRequestContext: async (call, input) => {
     const { project } = await resolveRepo(call, text(input, 'directory'), text(input, 'remote'), selectorOf(input, 'project'));
-    const number = integer(input, 'number');
-    const repo = repoPath(project);
-    const includeDiff = input.includeDiff === true;
-    const [raw, { data: comments }, diff, changed] = await Promise.all([
+    const number = integer(input, 'number'), repo = repoPath(project), includeDiff = input.includeDiff === true;
+    const [raw, { data: comments }, diff, changed, reviews] = await Promise.all([
       readPull(call, project, number),
       api<GiteaComment[]>(call, 'GET', `${repo}/issues/${number}/comments`),
       includeDiff ? apiText(call, `${repo}/pulls/${number}.diff`) : Promise.resolve(''),
       includeDiff ? readChangedFiles(call, repo, number) : Promise.resolve([]),
+      input.includeTimeline === true ? api<GiteaReview[]>(call, 'GET', `${repo}/pulls/${number}/reviews`).then(({ data }) => data, () => null) : Promise.resolve(null),
     ]);
-    const pull = mapPull(call, raw, project);
-    const patches = splitUnifiedDiff(diff);
+    const pull = mapPull(call, raw, project), patches = splitUnifiedDiff(diff);
     const files = changed.map((file) => {
-      const mapped = mapChangedFile(file);
-      const patch = patches.get(mapped.path);
+      const mapped = mapChangedFile(file), patch = patches.get(mapped.path);
       if (patch) mapped.patch = patch;
       return mapped;
     });
-    return {
+    return withReviewerStates({
       identity: call.identity,
       project,
       changeRequest: pull,
@@ -510,7 +477,7 @@ const handlers = {
       files,
       diff,
       ci: null,
-    };
+    }, reviews, raw.requested_reviewers ?? []);
   },
 
   listIssues: async (call, input) => {

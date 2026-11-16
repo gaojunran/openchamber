@@ -18,6 +18,7 @@ import type {
   PageResult,
   PullRequestStack,
   ProjectUpstream,
+  ReviewerStateValue,
   ReadyChangeRequestInput,
   DraftChangeRequestInput,
   CommentInput,
@@ -1834,11 +1835,7 @@ export type RepositoryReferenceThread = {
 };
 
 /** Someone asked to review, or who can be; `id` is what the host names them by (a login on GitHub). */
-export type RepositoryReferenceReviewer = {
-  id: string;
-  login: string;
-  avatarUrl?: string;
-};
+export type RepositoryReferenceReviewer = { id: string; login: string; avatarUrl?: string };
 
 /** What the preview adds for one item; too slow to ask for a whole page. */
 export type RepositoryReferenceDetail = {
@@ -1859,6 +1856,8 @@ export type RepositoryReferenceDetail = {
     reviewDecision: 'approved' | 'changes_requested' | 'review_required' | null;
     /** Asked to review and not done yet (GitHub); everyone set as a reviewer (GitLab). */
     reviewers: RepositoryReferenceReviewer[];
+    /** Everyone who was asked to review and everyone who answered, one entry per person; absent when the host did not say. */
+    reviewerStates?: { id: string; login: string; avatarUrl?: string; state: ReviewerStateValue }[];
     additions: number;
     deletions: number;
     changedFiles: number;

@@ -126,6 +126,30 @@ const voteValue = (key) => {
 
 const LABEL_STATUSES = [['rejected', 'rejected'], ['approved', 'approved'], ['disliked', 'disliked'], ['recommended', 'recommended']];
 
+const REVIEWER_STATES = new Map([[2, 'approved'], [1, 'commented'], [0, 'commented'], [-1, 'changes_requested'], [-2, 'changes_requested']]);
+
+/**
+ * Per-person review state from a change's Code-Review votes, plus the people
+ * still asked to review. A change with no Code-Review label at all says
+ * nothing, so its state is unknown rather than empty.
+ */
+export function mapGerritReviewerStates(raw, identity) {
+  const label = raw?.labels?.['Code-Review'];
+  if (!isPlainObject(label)) return undefined;
+  const pending = Array.isArray(raw?.pending_reviewers) ? raw.pending_reviewers : raw?.pending_reviewers?.REVIEWER;
+  const states = new Map();
+  for (const approval of Array.isArray(label.all) ? label.all : []) {
+    const user = mapGerritUser(approval, identity);
+    const state = REVIEWER_STATES.get(approval?.value);
+    if (user && state) states.set(user.id, { user, state });
+  }
+  for (const account of Array.isArray(pending) ? pending : []) {
+    const user = mapGerritUser(account, identity);
+    if (user && !states.has(user.id)) states.set(user.id, { user, state: 'pending' });
+  }
+  return [...states.values()];
+}
+
 /**
  * The labels of a change read with `DETAILED_LABELS`: their values, what the
  * caller may vote (`permitted_labels`), and every non-zero vote. A zero in

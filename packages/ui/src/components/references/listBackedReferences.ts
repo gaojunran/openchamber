@@ -248,6 +248,11 @@ const pullDetail = (context: ChangeRequestContext): RepositoryReferenceDetail['p
     };
     // Absent when the chain could not be read, which is not the same as in none.
     if (context.stack !== undefined) pull.stack = context.stack;
+    if (context.reviewerStates) {
+        pull.reviewerStates = context.reviewerStates.map((entry) => (entry.user.avatarUrl
+            ? { id: entry.user.id, login: entry.user.username, avatarUrl: entry.user.avatarUrl, state: entry.state }
+            : { id: entry.user.id, login: entry.user.username, state: entry.state }));
+    }
     if (context.voteLabels) pull.voteLabels = context.voteLabels;
     if (context.submitRequirements) pull.submitRequirements = context.submitRequirements;
     if (context.revisions) pull.revisions = context.revisions;

@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 
 import { checkContextSchema, isGraphqlRateLimitError, parseSummaryRefs, summarizeCheckContexts, toDiscussionState } from './pr-summaries.js';
+import { toAuthor, toReviewerStates, toReviewers } from './reviewer-states.js';
 
 const REFERENCE_PAGE_SIZE = 30;
 const ACROSS_REPO_CHUNK_SIZE = 40;
@@ -629,7 +630,6 @@ export function toReference(value, repos) {
 
 const REVIEW_STATES = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes_requested', COMMENTED: 'commented', DISMISSED: 'dismissed' };
 
-const toAuthor = (author) => (author ? { login: author.login, avatarUrl: author.avatarUrl ?? undefined } : null);
 
 // What this account may do with one comment, only when the host answered. A
 // review thread comment carries none: these routes do not change it.
@@ -733,11 +733,8 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number }) {
       reviewDecision: item.reviewDecision ? REVIEW_DECISIONS[item.reviewDecision] : null,
       // People asked to review and not done yet; a team request is left out
       // since the board only picks people.
-      reviewers: item.reviewRequests.nodes.flatMap(({ requestedReviewer: reviewer }) => (
-        reviewer?.__typename === 'User' && reviewer.login
-          ? [{ id: reviewer.login, ...toAuthor({ login: reviewer.login, avatarUrl: reviewer.avatarUrl }) }]
-          : []
-      )),
+      reviewers: toReviewers(item.reviewRequests.nodes),
+      reviewerStates: toReviewerStates(item.reviews.nodes, item.reviewRequests.nodes),
       // Like the list's statuses: a closed or merged PR's checks are not actionable.
       checks: item.state === 'OPEN'
         ? summarizeCheckContexts(item.headCommit.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [])

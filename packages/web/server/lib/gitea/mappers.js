@@ -179,6 +179,27 @@ export function mapGiteaReviewBody(value, identity, fallbackUrl = '') {
 
 const VERDICTS = new Map([['APPROVED', 'approved'], ['REQUEST_CHANGES', 'changes_requested']]);
 
+/** Review states that keep a user among a pull request's reviewers; `REQUEST_REVIEW` and `PENDING` do not. */
+export const SUBMITTED_REVIEW_STATES = new Set(['APPROVED', 'REQUEST_CHANGES', 'COMMENT']);
+
+const REVIEWER_STATES = { APPROVED: 'approved', REQUEST_CHANGES: 'changes_requested', COMMENT: 'commented', PENDING: 'pending' };
+
+/** One entry per person: the latest review decides, and asked reviewers without one still owe it. */
+export function mapGiteaReviewerStates(reviews, requested, identity) {
+  const states = new Map();
+  const ordered = [...reviews].sort((left, right) => String(left?.submitted_at ?? '').localeCompare(String(right?.submitted_at ?? '')));
+  for (const review of ordered) {
+    const user = mapGiteaUser(review?.user, identity);
+    const state = REVIEWER_STATES[review?.state];
+    if (user && state) states.set(user.id, { user, state });
+  }
+  for (const user of Array.isArray(requested) ? requested : []) {
+    const mapped = mapGiteaUser(user, identity);
+    if (mapped && !states.has(mapped.id)) states.set(mapped.id, { user: mapped, state: 'pending' });
+  }
+  return [...states.values()];
+}
+
 /** An approval or a request for changes still in force; null for anything else. */
 export function mapGiteaVerdict(value, identity, fallbackUrl = '') {
   if (!isPlainObject(value) || value.dismissed === true) return null;

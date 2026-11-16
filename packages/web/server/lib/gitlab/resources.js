@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { pairedDiffLine } from '../source-control/review-position.js';
 import { changeRequestNetworkTarget } from '../source-control/repository-network.js';
 import { mapGitLabCI, mapGitLabCommit, mapGitLabDiff, mapGitLabIssue, mapGitLabMergeRequest, mapGitLabNote, mapGitLabProject, mapGitLabUser, mapGitLabVerdictNote } from './mappers.js';
+import { readDiffStats, readReviewerStates } from './context-extras.js';
 import { resolveGitLabProjectsFromDirectory } from './repo.js';
 import { isPlainObject, isString } from './validation.js';
 
@@ -723,32 +724,6 @@ export function createGitLabResourceService({ origin, client, download, resolveP
     return resolvable.length > 0 && resolvable.every((note) => note.resolved === true);
   };
 
-  // GitLab sends no hunks for a file too large to show, so counting lines in
-  // the diffs misses them; its own line counts per file cover every file.
-  const DIFF_STATS_QUERY = `query($path: ID!, $iid: String!) {
-  project(fullPath: $path) {
-    mergeRequest(iid: $iid) { diffStats { path additions deletions } }
-  }
-}`;
-  /** Lines added and removed per file path, or null when GitLab cannot say (an older instance, an error). */
-  const readDiffStats = async (project, number) => {
-    try {
-      const response = await client.MergeRequests.requester.post('../graphql', {
-        body: { query: DIFF_STATS_QUERY, variables: { path: `${project.owner}/${project.name}`, iid: String(number) } },
-      });
-      const stats = response?.body?.data?.project?.mergeRequest?.diffStats;
-      if (!Array.isArray(stats)) return null;
-      const byPath = new Map();
-      for (const entry of stats) {
-        if (!isPlainObject(entry) || !isString(entry.path) || !Number.isInteger(entry.additions) || !Number.isInteger(entry.deletions)) return null;
-        byPath.set(entry.path, { additions: entry.additions, deletions: entry.deletions });
-      }
-      return byPath;
-    } catch {
-      return null;
-    }
-  };
-
   const resolveMutationActionTarget = async (payload) => {
     if (payload.providerTarget) {
       return {
@@ -1331,7 +1306,7 @@ export function createGitLabResourceService({ origin, client, download, resolveP
         remote: options.remote,
         linked: options.linked,
       });
-      const [noteSource, diffs, ci, headProject, commitPage, diffStats, threadPermissions, chain] = await Promise.all([
+      const [noteSource, diffs, ci, headProject, commitPage, diffStats, threadPermissions, reviewerStates, chain] = await Promise.all([
         // The preview's timeline reads the notes as their threads; other readers keep the plain list.
         options.includeTimeline
           ? readCollection((page) => client.MergeRequestDiscussions.all(target.project.id, number, page), 'GitLab merge request has more threads than OpenChamber reads')
@@ -1349,8 +1324,10 @@ export function createGitLabResourceService({ origin, client, download, resolveP
         options.includeTimeline
           ? client.MergeRequests.allCommits(target.project.id, number, { maxPages: 1, perPage: TIMELINE_COMMIT_LIMIT, showExpanded: true }).then(readPage)
           : Promise.resolve(null),
-        options.includeDiff ? readDiffStats(target.project, number) : Promise.resolve(null),
+        options.includeDiff ? readDiffStats(client, target.project, number) : Promise.resolve(null),
         options.includeTimeline ? readThreadPermissions(target.project, number) : Promise.resolve(null),
+        // Per-person review state, only for the preview's timeline.
+        options.includeTimeline ? readReviewerStates(client, target.project.id, number, raw, identity) : Promise.resolve(undefined),
         // The chain it is a layer of, for the preview and for an agent given
         // the merge request; one that cannot be read leaves its stack unknown.
         readChain(raw, isString(target.raw?.default_branch) ? target.raw.default_branch : null).catch(() => undefined),
@@ -1400,7 +1377,7 @@ export function createGitLabResourceService({ origin, client, download, resolveP
       if (chain !== undefined) context.stack = chain;
       if (!options.includeTimeline) return context;
       if (canonicalReads && !Array.isArray(commitPage?.items)) throw new Error('GitLab returned an invalid merge request commit list');
-      return {
+      const timeline = {
         ...context,
         commits: asArray(commitPage?.items).flatMap((commit) => {
           const mapped = mapGitLabCommit(commit);
@@ -1418,6 +1395,8 @@ export function createGitLabResourceService({ origin, client, download, resolveP
           return mapped ? [mapped] : [];
         }),
       };
+      if (reviewerStates !== undefined) timeline.reviewerStates = reviewerStates;
+      return timeline;
     },
 
     async listIssues(directory, options = {}) {
