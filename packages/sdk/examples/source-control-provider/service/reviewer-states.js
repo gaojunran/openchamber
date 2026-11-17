@@ -1,11 +1,11 @@
 // packages/sdk/examples/source-control-provider/service/reviewer-states.ts
-var STATE = {
-  APPROVED: "approved",
-  REQUEST_CHANGES: "changes_requested",
-  COMMENT: "commented",
-  PENDING: "pending"
-};
-var stateOf = (state) => (state in STATE) ? STATE[state] : null;
+var STATE = new Map([
+  ["APPROVED", "approved"],
+  ["REQUEST_CHANGES", "changes_requested"],
+  ["COMMENT", "commented"],
+  ["PENDING", "pending"]
+]);
+var stateOf = (state) => STATE.get(state) ?? null;
 var person = (user) => {
   const mapped = { id: String(user.id), username: user.login };
   if (user.avatar_url)

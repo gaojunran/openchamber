@@ -8,14 +8,14 @@ export type GiteaReview = {
   stale?: boolean;
 };
 
-const STATE = {
-  APPROVED: 'approved',
-  REQUEST_CHANGES: 'changes_requested',
-  COMMENT: 'commented',
-  PENDING: 'pending',
-} satisfies Record<string, SourceControlReviewerState['state']>;
+const STATE = new Map<string, SourceControlReviewerState['state']>([
+  ['APPROVED', 'approved'],
+  ['REQUEST_CHANGES', 'changes_requested'],
+  ['COMMENT', 'commented'],
+  ['PENDING', 'pending'],
+]);
 
-const stateOf = (state: string): SourceControlReviewerState['state'] | null => (state in STATE ? STATE[state as keyof typeof STATE] : null);
+const stateOf = (state: string): SourceControlReviewerState['state'] | null => STATE.get(state) ?? null;
 
 const person = (user: GiteaPerson): SourceControlReviewerState['user'] => {
   const mapped: SourceControlReviewerState['user'] = { id: String(user.id), username: user.login };
