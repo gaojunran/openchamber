@@ -7,8 +7,9 @@ import { useSourceControlProvider } from '@/lib/source-control/providers/registr
 
 /**
  * What the Markdown bodies inside one preview link against: the item's
- * repository, for `#12`, `@someone` and commit ids, and the folder the item
- * was read through, where a commit link looks for that commit first.
+ * repository, for `#12`, `@someone` and commit ids, the folder the item was
+ * read through, where a commit link looks for that commit first, and the
+ * prefixes its numbers read with.
  */
 export type ReferenceLinks = {
   repository: RepositoryLinkContext | null;
@@ -21,7 +22,6 @@ const NO_LINKS: ReferenceLinks = { repository: null, directory: null, issuePrefi
 
 export const ReferenceLinksContext = React.createContext<ReferenceLinks>(NO_LINKS);
 
-/** One stable value per item and folder, so bodies keep their parsed Markdown across renders. */
 export function useReferenceLinks(directory: string | null, reference: RepositoryReference | null): ReferenceLinks {
   const urls = useRepositoryUrlMatcher();
   const provider = useSourceControlProvider(reference?.provider ?? null);

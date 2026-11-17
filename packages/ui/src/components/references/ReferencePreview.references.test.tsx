@@ -1,21 +1,14 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { act, createElement } from 'react';
+import { act } from 'react';
 import type { Root } from 'react-dom/client';
 
 import type { RepositoryIssueReference, RepositoryReferenceDetail, RepositoryReferenceLink, SourceControlReadContext } from '@/lib/api/types';
 
-mock.module('@/components/chat/MarkdownRenderer', () => ({
-  SimpleMarkdownRenderer: ({ content }: { content: string }) => createElement('div', null, content),
-}));
-
-// What a chip's click opens, in place of the chat's own link handling.
-const opened: string[] = [];
-mock.module('@/components/chat/useOpenChatLink', () => ({
-  useOpenChatLink: () => (url: string) => { opened.push(url); },
-}));
-
 const browser = new Window({ url: 'http://localhost/' });
+// What a chip's click opens: the real link handling ends in a new tab.
+const opened: string[] = [];
+browser.open = ((url: string) => { opened.push(url); return null; }) as typeof browser.open;
 Object.assign(globalThis, {
   window: browser, document: browser.document, navigator: browser.navigator, localStorage: browser.localStorage,
   Element: browser.Element, HTMLElement: browser.HTMLElement, Node: browser.Node, Text: browser.Text,
@@ -111,7 +104,7 @@ const rowText = (row: HTMLElement) => row.textContent?.replace(/\s+/g, ' ').trim
 describe('items that mentioned the previewed one', () => {
   test('each mention is a row with its author and chip, ordered by time among the comments', async () => {
     await show(detailWith({
-      comments: [{ author: { login: 'sam' }, body: 'A note', createdAt: '2026-10-02T12:00:00Z', url: 'https://github.com/acme/app/issues/7#c1', path: null, line: null, review: null }],
+      comments: [{ author: { login: 'sam' }, body: '', createdAt: '2026-10-02T12:00:00Z', url: 'https://github.com/acme/app/issues/7#c1', path: null, line: null, review: null }],
       commentTotal: 1,
       references: [
         mention(),

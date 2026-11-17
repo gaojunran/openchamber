@@ -1,7 +1,6 @@
 import type { RepositoryReferenceLink, ReviewCommentExcerpt } from '@/lib/api/types';
 
 
-/** One comment in the preview's thread, from a source-control provider or a tracker. */
 export type ReferenceCommentItem = {
     kind: 'comment';
     key: string;
@@ -9,24 +8,13 @@ export type ReferenceCommentItem = {
     avatarUrl: string | null;
     body: string;
     createdAt: string | null;
-    /** What the comment is attached to: a review verdict, or `path:line`. */
     context: string | null;
-    /** The `path:line` a review comment sits on, for what it is attached to in chat. */
     location: string | null;
-    /** The lines a review comment sits on, for a suggestion in it to be drawn against. */
     excerpt?: ReviewCommentExcerpt;
-    /**
-     * The host's id for a conversation comment, where an edit or delete names
-     * it. Absent on a review or line comment, which these routes do not change.
-     */
     id?: string;
-    /** Whether this account may replace the comment; absent when the host does not say. */
     canUpdate?: boolean;
-    /** Whether this account may remove the comment; absent when the host does not say. */
     canDelete?: boolean;
-    /** Set when the comment opens a review thread, or a discussion comment's replies; its replies are not entries of their own. */
     thread?: ReferenceCommentThread;
-    /** A discussion comment in a category that takes answers: whether it is the answer, and whether this account may change that. */
     answer?: { chosen: boolean; canChange: boolean };
 };
 
@@ -35,21 +23,18 @@ export type ReferenceCommentThread = {
     resolved: boolean;
     canResolve: boolean;
     canReply: boolean;
-    /** Oldest first. */
     replies: ReferenceCommentItem[];
 };
 
 export type ReferenceCommitItem = {
     sha: string;
     headline: string;
-    /** Who made it: the host account, or the name git recorded. */
     author: string | null;
     avatarUrl: string | null;
     committedAt: string | null;
     url: string | null;
 };
 
-/** Commits that landed one after another, between two comments. */
 export type ReferenceCommitGroup = {
     kind: 'commits';
     key: string;
