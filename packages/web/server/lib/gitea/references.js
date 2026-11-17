@@ -50,7 +50,6 @@ export async function readTimelineReferences(client, repo, number) {
     if (isString(target.repository?.full_name) && target.repository.full_name) reference.repo = target.repository.full_name;
     const author = userOf(comment?.user ?? entry.user);
     if (author) reference.author = author;
-    // Two mentions of one item are one row; the earliest mention names it.
     const previous = references.get(reference.url);
     if (!previous || String(createdAt ?? '') < String(previous.createdAt ?? '')) references.set(reference.url, reference);
   }

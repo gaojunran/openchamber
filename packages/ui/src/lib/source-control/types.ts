@@ -520,11 +520,6 @@ export interface ChangeRequestContext {
   verdicts?: ChangeRequestVerdict[];
   reviewers?: SourceControlUser[];
   references?: SourceControlReferenceLink[];
-  /**
-   * The stack the change request is a layer of: GitHub's own (sent only for
-   * a layer of one), or on GitLab the chain of open merge requests by branch
-   * (null in none). Absent when it could not be read.
-   */
   stack?: PullRequestStack | null;
   voteLabels?: ChangeRequestVoteLabel[];
   submitRequirements?: ChangeRequestSubmitRequirement[];

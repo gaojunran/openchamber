@@ -276,11 +276,6 @@ export function createGiteaResourceService({
     return pulls.filter((raw) => !mergedOnly || raw?.merged === true).map((raw) => requirePull(raw, repo.project));
   };
 
-  /**
-   * An issue's or pull request's comments. Gitea answers them all in one
-   * list and ignores `page` and `limit` here (1.21 and 1.27), so paging would
-   * read the same list again.
-   */
   const readIssueComments = async (repo, number) => {
     const comments = await client.get(`${repoPath(repo)}/issues/${number}/comments`);
     if (!Array.isArray(comments)) throw malformed(`${providerLabel} returned an invalid comment list`);
@@ -370,7 +365,6 @@ export function createGiteaResourceService({
         headProjectOf(raw, target, net.targets),
         options.includeTimeline ? readTimelineCommits(client, repo, number) : Promise.resolve(null),
         options.includeTimeline ? readTimelineReferences(client, repo, number) : Promise.resolve(null),
-        // Only the viewer's own comments may be changed; an unread login just hides both actions.
         readCurrentLogin().catch(() => null),
       ]);
       const reviewsWithComments = reviews.filter((review) => isPlainObject(review) && Number.isInteger(review.id) && review.comments_count > 0);

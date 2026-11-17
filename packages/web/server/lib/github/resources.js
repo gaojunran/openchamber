@@ -507,7 +507,6 @@ export function createGitHubResources({
       return result;
     },
 
-    /** The issue, null for a selector outside the bound network; a pull request number is refused. */
     getIssue: async ({ session, context, directory, number, project, remote, includeTimeline }) => {
       const { octokit } = accountOf(session);
       const identity = identityOf(session);

@@ -5,12 +5,6 @@ import { repositoryLinkContextOfUrl, type RepositoryLinkContext } from '@/lib/so
 import { useRepositoryUrlMatcher } from '@/lib/source-control/repositoryUrlMatcher';
 import { useSourceControlProvider } from '@/lib/source-control/providers/registry';
 
-/**
- * What the Markdown bodies inside one preview link against: the item's
- * repository, for `#12`, `@someone` and commit ids, the folder the item was
- * read through, where a commit link looks for that commit first, and the
- * prefixes its numbers read with.
- */
 export type ReferenceLinks = {
   repository: RepositoryLinkContext | null;
   directory: string | null;

@@ -1574,7 +1574,6 @@ export type RepositoryReferenceThread = {
   replies: RepositoryReferenceComment[];
 };
 
-/** What the preview adds for one item; too slow to ask for a whole page. */
 export type RepositoryReferenceDetail = {
   number: number;
   body?: string;
@@ -1595,9 +1594,7 @@ export type RepositoryReferenceDetail = {
     submitRequirements?: ChangeRequestSubmitRequirement[];
     revisions?: ChangeRequestRevision[];
   } | null;
-  /** Items that mentioned this one in their own text, oldest first. */
   references?: RepositoryReferenceLink[];
-  /** A discussion's: what this account may do with it. Absent for an issue or a change request. */
   discussion?: { canComment: boolean; canClose: boolean; canReopen: boolean };
 };
 

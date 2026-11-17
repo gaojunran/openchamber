@@ -8,7 +8,7 @@ import type { RepositoryIssueReference, RepositoryReferenceDetail, RepositoryRef
 const browser = new Window({ url: 'http://localhost/' });
 // What a chip's click opens: the real link handling ends in a new tab.
 const opened: string[] = [];
-browser.open = ((url: string) => { opened.push(url); return null; }) as typeof browser.open;
+browser.open = (url?: string | URL) => { opened.push(String(url)); return null; };
 Object.assign(globalThis, {
   window: browser, document: browser.document, navigator: browser.navigator, localStorage: browser.localStorage,
   Element: browser.Element, HTMLElement: browser.HTMLElement, Node: browser.Node, Text: browser.Text,
