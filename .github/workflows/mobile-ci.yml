@@ -23,10 +23,11 @@ jobs:
         opencode --version
 
         '
-    - name: Build the app for the simulator, keeping the simulator Podfile
-      env:
-        IOS_SIM_BUILD_KEEP_PODS: '1'
+    - name: Build the app for the simulator
       run: bun run mobile:build:ios:simulator
+    - name: Keep the MLKit-less Podfile the simulator build needs
+      working-directory: packages/mobile/ios/App
+      run: "set -euo pipefail\ngrep -v CapacitorMlkitBarcodeScanning Podfile > Podfile.sim\nmv Podfile.sim Podfile\npod install\n"
     - name: Start a server for the app to connect to
       run: "set -euo pipefail\nnode packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \\\n  > \"$RUNNER_TEMP/openchamber-server.log\" 2>&1 &\nfor attempt in $(seq 1 90); do\n  if curl -fsS http://127.0.0.1:4123/health; then\n    echo \"server answered after $((attempt * 2))s\"\n    exit 0\n  fi\n  sleep 2\ndone\ncat \"$RUNNER_TEMP/openchamber-server.log\"\nexit 1\n"
     - name: Pick and boot a simulator
