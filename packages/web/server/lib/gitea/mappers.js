@@ -167,7 +167,7 @@ export function mapGiteaReviewerStates(reviews, requested, identity) {
   const ordered = [...reviews].sort((left, right) => String(left?.submitted_at ?? '').localeCompare(String(right?.submitted_at ?? '')));
   for (const review of ordered) {
     const user = mapGiteaUser(review?.user, identity);
-    const state = REVIEWER_STATES[review?.state];
+    const state = review?.dismissed === true ? 'pending' : REVIEWER_STATES[review?.state];
     if (user && state) states.set(user.id, { user, state });
   }
   for (const user of Array.isArray(requested) ? requested : []) {

@@ -142,13 +142,15 @@ describe('Gitea change request context', () => {
         review(2, bo, 'APPROVED', '2026-10-01T09:30:00Z'),
         // A stale review still says what its author decided.
         review(3, ann, 'REQUEST_CHANGES', '2026-10-01T10:00:00Z', true),
+        // A dismissed approval is no longer in force, so its author is not approved.
+        { ...review(4, { id: 10, login: 'di' }, 'APPROVED', '2026-10-01T10:30:00Z'), dismissed: true },
       ],
     }));
 
     const result = await service.changeRequestContext('/repo', 1, { includeTimeline: true, remote: 'origin' });
 
     expect(result.reviewerStates.map(({ user, state }) => [user.username, state])).toEqual([
-      ['ann', 'changes_requested'], ['bob', 'approved'], ['cy', 'pending'],
+      ['ann', 'changes_requested'], ['bob', 'approved'], ['di', 'pending'], ['cy', 'pending'],
     ]);
   });
 

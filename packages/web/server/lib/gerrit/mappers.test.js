@@ -33,7 +33,7 @@ describe('Gerrit mappers', () => {
       pending_reviewers: { REVIEWER: [account(6, 'fi'), account(1, 'ann')] },
     };
     expect(mapGerritReviewerStates(raw, identity).map(({ user, state }) => [user.username, state])).toEqual([
-      ['ann', 'approved'], ['bo', 'commented'], ['cy', 'commented'], ['di', 'changes_requested'], ['ed', 'changes_requested'], ['fi', 'pending'],
+      ['ann', 'approved'], ['bo', 'commented'], ['cy', 'pending'], ['di', 'changes_requested'], ['ed', 'changes_requested'], ['fi', 'pending'],
     ]);
     // A change with no Code-Review label says nothing rather than saying no one reviewed.
     expect(mapGerritReviewerStates({ labels: {} }, identity)).toBeUndefined();

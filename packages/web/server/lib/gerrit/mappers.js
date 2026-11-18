@@ -106,17 +106,19 @@ const voteValue = (key) => {
 
 const LABEL_STATUSES = [['rejected', 'rejected'], ['approved', 'approved'], ['disliked', 'disliked'], ['recommended', 'recommended']];
 
-const REVIEWER_STATES = new Map([[2, 'approved'], [1, 'commented'], [0, 'commented'], [-1, 'changes_requested'], [-2, 'changes_requested']]);
+const REVIEWER_STATES = new Map([[2, 'approved'], [1, 'commented'], [-1, 'changes_requested'], [-2, 'changes_requested']]);
 
 export function mapGerritReviewerStates(raw, identity) {
   const label = raw?.labels?.['Code-Review'];
   if (!isPlainObject(label)) return undefined;
   const pending = Array.isArray(raw?.pending_reviewers) ? raw.pending_reviewers : raw?.pending_reviewers?.REVIEWER;
+  const ownerId = mapGerritUser(raw?.owner, identity)?.id;
   const states = new Map();
   for (const approval of Array.isArray(label.all) ? label.all : []) {
     const user = mapGerritUser(approval, identity);
-    const state = REVIEWER_STATES.get(approval?.value);
-    if (user && state) states.set(user.id, { user, state });
+    const value = approval?.value;
+    const state = value === undefined || value === 0 ? 'pending' : REVIEWER_STATES.get(value);
+    if (user && state && user.id !== ownerId) states.set(user.id, { user, state });
   }
   for (const account of Array.isArray(pending) ? pending : []) {
     const user = mapGerritUser(account, identity);
