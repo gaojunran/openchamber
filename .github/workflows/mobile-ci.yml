@@ -1,60 +1,53 @@
-name: Mobile Smoke Build
-
+name: iOS quick actions E2E
 on:
-  workflow_dispatch:
-
+  workflow_dispatch: null
 concurrency:
-  group: mobile-smoke-${{ github.ref }}
+  group: ios-quick-actions-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  android-debug:
-    name: Android debug APK
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+  ios-quick-actions-e2e:
+    name: Long-press the app icon and run the New session action
+    runs-on: macos-15
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/checkout@v4
+    - uses: oven-sh/setup-bun@v2
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+    - name: Install dependencies
+      run: bun install
+    - name: Install opencode, which the server needs to serve
+      run: 'npm install -g "@opencode/cli@$(node -p "require(''./packages/electron/package.json'').opencodeCli.version")"
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        opencode --version
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26'
+        '
+    - name: Build the app for the simulator, keeping the simulator Podfile
+      env:
+        IOS_SIM_BUILD_KEEP_PODS: '1'
+      run: bun run mobile:build:ios:simulator
+    - name: Start a server for the app to connect to
+      run: "set -euo pipefail\nnode packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \\\n  > \"$RUNNER_TEMP/openchamber-server.log\" 2>&1 &\nfor attempt in $(seq 1 90); do\n  if curl -fsS http://127.0.0.1:4123/health; then\n    echo \"server answered after $((attempt * 2))s\"\n    exit 0\n  fi\n  sleep 2\ndone\ncat \"$RUNNER_TEMP/openchamber-server.log\"\nexit 1\n"
+    - name: Pick and boot a simulator
+      id: sim
+      run: "set -euo pipefail\n# A step cannot read its own outputs, so the UDID travels in a variable here\n# and as the step output only for the later steps.\nUDID=$(python3 - <<'PY'\nimport json, re, subprocess, sys\n\n# The runner can carry runtimes newer than the selected Xcode's SDK, so prefer the\n# newest iPhone runtime the SDK actually supports.\nsdk = subprocess.check_output([\"xcodebuild\", \"-version\", \"-sdk\", \"iphonesimulator\"], text=True)\nfound = re.search(r\"iOS (\\d+)\\.(\\d+)\", sdk)\nsdk_major = int(found.group(1)) if found else 999\nprint(sdk.strip().splitlines()[-1], file=sys.stderr)\n\ndata = json.loads(subprocess.check_output([\"xcrun\", \"simctl\", \"list\", \"devices\", \"available\", \"-j\"]))\ndef version(runtime):\n    found = re.search(r\"iOS-(\\d+)-(\\d+)\", runtime)\n    return (int(found.group(1)), int(found.group(2))) if found else (0, 0)\n\ncandidates = []\nfor runtime, devices in data[\"devices\"].items():\n    if not version(runtime)[0]:\n        continue\n    for device in devices:\n        if device.get(\"isAvailable\") and device[\"name\"].startswith(\"iPhone\"):\n            candidates.append((version(runtime), device[\"name\"], device[\"udid\"], runtime))\nif not candidates:\n    raise SystemExit(\"no available iPhone simulator\")\npool = [entry for entry in candidates if entry[0][0] <= sdk_major] or candidates\npool.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)\nversion_picked, name, udid, runtime = pool[0]\nprint(f\"picked {name} on {runtime}\", file=sys.stderr)\nprint(udid)\nPY\n)\necho \"udid=$UDID\" >> \"$GITHUB_OUTPUT\"\nxcrun simctl boot \"$UDID\" || true\nxcrun simctl bootstatus \"$UDID\" -b\n# A 1x1 pixel can be rejected by the Photos importer, so seed a real picture.\npython3 - <<'PY'\nimport struct, zlib\n\nw = h = 240\nraw = b''.join(\n    b'\\x00' + b''.join(bytes((x * 255 // w, y * 255 // h, 128)) for x in range(w))\n    for y in range(h)\n)\ndef chunk(tag, data):\n    body = tag + data\n    return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)\npng = (b'\\x89PNG\\r\\n\\x1a\\n'\n       + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))\n       + chunk(b'IDAT', zlib.compress(raw, 9))\n       + chunk(b'IEND', b''))\nopen('share-e2e.png', 'wb').write(png)\nPY\nxcrun simctl addmedia \"$UDID\" share-e2e.png\necho \"seeded a photo into $UDID\"\n"
+    - name: Run the quick-action test
+      working-directory: packages/mobile
+      run: "set -o pipefail\nxcodebuild test \\\n  -only-testing:OpenChamberShareUITests/QuickActionsE2ETests \\\n  -workspace ios/App/App.xcworkspace \\\n  -scheme OpenChamberE2E \\\n  -destination \"id=${{ steps.sim.outputs.udid }}\" \\\n  -resultBundlePath \"$RUNNER_TEMP/e2e.xcresult\" \\\n  CODE_SIGNING_ALLOWED=YES \\\n  CODE_SIGN_IDENTITY=\"-\" \\\n  2>&1 | tee \"$RUNNER_TEMP/e2e.log\"\n"
+    - name: Export the screenshots
+      if: always()
+      run: "xcrun xcresulttool export attachments \\\n  --path \"$RUNNER_TEMP/e2e.xcresult\" \\\n  --output-path \"$RUNNER_TEMP/e2e-attachments\" || true\nls -la \"$RUNNER_TEMP/e2e-attachments\" || true\n"
+    - name: Upload the evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-quick-actions-e2e
+        path: '${{ runner.temp }}/e2e-attachments
 
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 21
+          ${{ runner.temp }}/e2e.log
 
-      - name: Install dependencies
-        run: bun install
+          ${{ runner.temp }}/openchamber-server.log
 
-      - name: Lint mobile package
-        run: bun run lint:mobile
-
-      - name: Build Android debug APK
-        run: bun run mobile:build:android:debug
-
-      - name: Upload Android debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: openchamber-android-debug-apk
-          path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-  ios-simulator:
-    name: iOS simulator app
-    runs-on: blacksmith-6vcpu-macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26'
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Build iOS simulator app
-        run: bun run mobile:build:ios:simulator
+          '
+        if-no-files-found: warn

@@ -3,11 +3,14 @@ package com.openchamber.app;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.os.Bundle;
@@ -21,18 +24,68 @@ import org.junit.runner.RunWith;
 import org.xmlpull.v1.XmlPullParser;
 
 /**
- * Pins the launcher quick action ("New session") to the deep link the web
- * layer routes. Nothing else verifies them: a dropped metadata entry, a renamed id or a broken
- * link only shows up at runtime, as an empty long-press menu or a tap that opens the default
- * screen, so this reads the packaged resources the system would read.
+ * Pins the launcher quick action ("New session") to the deep link the web layer routes. Nothing
+ * else verifies it: a dropped metadata entry, a renamed id or a broken link only shows up at
+ * runtime, as an empty long-press menu or a tap that opens the default screen, so this reads the
+ * packaged resources the system would read.
  */
 @RunWith(AndroidJUnit4.class)
 public class LauncherShortcutsTest {
 
     private static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
 
+    /**
+     * The resource above says what we declared; this says what the system actually registered for
+     * the launcher to query. A metadata entry the shortcut service rejects leaves the first test
+     * green and the menu empty.
+     */
     @Test
-    public void shortcutsMetadataAndDeepLinksMatchTheQuickActions() throws Exception {
+    public void theSystemRegistersTheOnlyQuickAction() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        ShortcutManager manager = context.getSystemService(ShortcutManager.class);
+        assertNotNull("this device has no ShortcutManager", manager);
+
+        // Each flag reaches a different store, and a non-launcher caller is not guaranteed every
+        // one of them, so the union is what this asserts on and the per-flag counts go into the
+        // message.
+        int[] flags = {
+            ShortcutManager.FLAG_MATCH_MANIFEST,
+            ShortcutManager.FLAG_MATCH_CACHED,
+            ShortcutManager.FLAG_MATCH_DYNAMIC,
+            ShortcutManager.FLAG_MATCH_PINNED,
+        };
+        List<ShortcutInfo> shortcuts = new ArrayList<>();
+        StringBuilder report = new StringBuilder();
+        for (int flag : flags) {
+            List<ShortcutInfo> found = manager.getShortcuts(flag);
+            report.append(flag).append('=').append(found.size()).append(' ');
+            for (ShortcutInfo shortcut : found) {
+                if (!shortcuts.contains(shortcut)) {
+                    shortcuts.add(shortcut);
+                }
+            }
+        }
+        report.append("registered: ").append(ids(shortcuts));
+
+        // Exactly one: a second action declared in the resource would show up here.
+        assertEquals(report.toString(), 1, shortcuts.size());
+        ShortcutInfo shortcut = shortcuts.get(0);
+        assertEquals("new-session", shortcut.getId());
+        assertEquals("openchamber://new", shortcut.getIntent().getDataString());
+        assertTrue("the only action is disabled", shortcut.isEnabled());
+        assertEquals("New session", shortcut.getShortLabel().toString());
+    }
+
+    private static String ids(List<ShortcutInfo> shortcuts) {
+        List<String> ids = new ArrayList<>();
+        for (ShortcutInfo shortcut : shortcuts) {
+            ids.add(shortcut.getId());
+        }
+        return ids.toString();
+    }
+
+    @Test
+    public void shortcutsMetadataAndDeepLinksMatchTheQuickAction() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         PackageManager packageManager = context.getPackageManager();
 
@@ -69,5 +122,6 @@ public class LauncherShortcutsTest {
 
         Resources resources = context.getResources();
         assertFalse(resources.getString(R.string.shortcut_new_session).trim().isEmpty());
+        assertEquals("New session", resources.getString(R.string.shortcut_new_session));
     }
 }
