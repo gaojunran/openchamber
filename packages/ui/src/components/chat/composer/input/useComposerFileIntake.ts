@@ -327,7 +327,6 @@ export function useComposerFileIntake({
 
     const attachSharedFiles = React.useCallback((files: File[], leadingText: string = ''): Promise<RejectedSharedFile[]> => {
         const work = (async (): Promise<RejectedSharedFile[]> => {
-            const attachmentDraftKey = useInputStore.getState().attachmentDraftKey;
             const rejected: RejectedSharedFile[] = [];
             const attachedNames: string[] = [];
             const usedNames = () => [
@@ -344,7 +343,7 @@ export function useComposerFileIntake({
                 try {
                     const attached = await addAttachedFile(
                         renameFileForAttachmentCitation(file, name),
-                        undefined,
+                        chatDraftIdentity,
                         (landed) => attachedNames.push(...landed.map((entry) => entry.filename)),
                     );
                     if (!attached) rejected.push({ name: file.name, reason: 'unsupported-type' });
@@ -356,20 +355,21 @@ export function useComposerFileIntake({
                 }
             };
             for (let index = 0; index < images.length; index += 1) {
-                if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
                 await attach(images[index], imageNames[index]);
             }
             for (let index = 0; index < others.length; index += 1) {
-                if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
                 await attach(others[index], otherNames[index]);
             }
 
-            insertCitationAtSelection(attachedNames.length > 0 ? buildAttachmentCitationText(attachedNames) : '', leadingText);
+            const targetKey = chatDraftIdentity ? getChatDraftIdentityKey(chatDraftIdentity) : '';
+            if (useInputStore.getState().attachmentDraftKey === targetKey) {
+                insertCitationAtSelection(attachedNames.length > 0 ? buildAttachmentCitationText(attachedNames) : '', leadingText);
+            }
             return rejected;
         })();
         void trackAttachWork(work.then(() => undefined, () => undefined));
         return work;
-    }, [addAttachedFile, composerRef, composerText, insertCitationAtSelection, pendingPastedAttachmentFilenamesRef, trackAttachWork]);
+    }, [addAttachedFile, chatDraftIdentity, composerRef, composerText, insertCitationAtSelection, pendingPastedAttachmentFilenamesRef, trackAttachWork]);
 
     const attachFilesWithCitation = React.useCallback((files: File[], leadingText: string = ''): Promise<void> => {
         const documents = files.filter((file) => isDocumentAttachmentFilename(file.name));

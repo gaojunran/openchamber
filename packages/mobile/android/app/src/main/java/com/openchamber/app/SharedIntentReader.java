@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Turns a share intent into the payload SharedFiles.takePending hands to the page. */
 final class SharedIntentReader {
@@ -42,25 +43,31 @@ final class SharedIntentReader {
         if (!multiple && !Intent.ACTION_SEND.equals(action)) {
             return null;
         }
-        StringBuilder signature = new StringBuilder(action).append('|').append(intent.getType());
-        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-        if (text != null) {
-            signature.append('|').append(text.hashCode());
-        }
-        if (multiple) {
-            ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
-            if (streams != null) {
-                for (Uri stream : streams) {
+        // The activity is exported and accepts any type, so a malformed extra from another app
+        // must not crash the main thread that asks for the signature.
+        try {
+            StringBuilder signature = new StringBuilder(action).append('|').append(intent.getType());
+            CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            if (text != null) {
+                signature.append('|').append(text.hashCode());
+            }
+            if (multiple) {
+                ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if (streams != null) {
+                    for (Uri stream : streams) {
+                        signature.append('|').append(stream);
+                    }
+                }
+            } else {
+                Uri stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (stream != null) {
                     signature.append('|').append(stream);
                 }
             }
-        } else {
-            Uri stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-            if (stream != null) {
-                signature.append('|').append(stream);
-            }
+            return signature.toString();
+        } catch (RuntimeException malformed) {
+            return null;
         }
-        return signature.toString();
     }
 
     /**
@@ -106,44 +113,88 @@ final class SharedIntentReader {
             if (uri == null) {
                 continue;
             }
-            Metadata metadata = readMetadata(resolver, uri);
-
-            // Android accepts any shared type; the web layer's attachment rules filter.
-            String refusal = SharedPayloadStore.rejectionReason(index, metadata.size, batchBytes, true, true);
-            if (refusal != null) {
-                rejected.add(new SharedPayloadStore.Rejection(metadata.name, refusal));
-                continue;
-            }
 
             long remainingMs = (deadline - System.nanoTime()) / 1_000_000L;
             if (remainingMs <= 0) {
                 // The share took too long already; name the rest instead of reading on.
-                rejected.add(new SharedPayloadStore.Rejection(metadata.name, SharedPayloadStore.REASON_TIMED_OUT));
+                rejected.add(new SharedPayloadStore.Rejection(fallbackName(uri), SharedPayloadStore.REASON_TIMED_OUT));
                 continue;
             }
 
-            ReadResult result = readBytes(resolver, uri, metadata.size, Math.min(readTimeoutMs, remainingMs));
-            if (result.reason != null) {
-                rejected.add(new SharedPayloadStore.Rejection(metadata.name, result.reason));
+            // The calls before the bytes exist too (a provider's query and openFile are binder
+            // round trips), so the whole per-file phase runs on a worker with a deadline.
+            FileRead file = readFileWithin(resolver, uri, index, batchBytes, Math.min(readTimeoutMs, remainingMs));
+            if (file.reason != null) {
+                rejected.add(new SharedPayloadStore.Rejection(file.name, file.reason));
                 continue;
             }
             // A provider may under-report SIZE, so the batch is checked against what was read.
-            refusal = SharedPayloadStore.rejectionReason(index, result.data.length, batchBytes, true, true);
+            String refusal = SharedPayloadStore.rejectionReason(index, file.data.length, batchBytes, true, true);
             if (refusal != null) {
-                rejected.add(new SharedPayloadStore.Rejection(metadata.name, refusal));
+                rejected.add(new SharedPayloadStore.Rejection(file.name, refusal));
                 continue;
             }
 
-            String mimeType = readMimeType(resolver, uri);
             files.add(new SharedPayloadStore.FilePayload(
-                metadata.name,
-                mimeType,
-                Base64.encodeToString(result.data, Base64.NO_WRAP)
+                file.name,
+                file.mimeType,
+                Base64.encodeToString(file.data, Base64.NO_WRAP)
             ));
-            batchBytes += result.data.length;
+            batchBytes += file.data.length;
         }
 
         return new SharedPayloadStore.SharedPayload(text, files, rejected);
+    }
+
+    /**
+     * Reads one shared file on its own thread and stops waiting at the deadline. A provider stuck
+     * in a binder call cannot be interrupted, so the worker is abandoned rather than joined; it
+     * is a daemon, and later shares are not queued behind it.
+     */
+    private static FileRead readFileWithin(
+        ContentResolver resolver,
+        Uri uri,
+        int index,
+        long batchBytes,
+        long timeoutMs
+    ) {
+        AtomicReference<FileRead> result = new AtomicReference<>();
+        Thread worker = new Thread(() -> result.set(readOne(resolver, uri, index, batchBytes, timeoutMs)), "share-file-read");
+        worker.setDaemon(true);
+        worker.start();
+        try {
+            worker.join(timeoutMs);
+            if (result.get() == null) {
+                // The deadline fell while the worker was finishing; give it a moment before
+                // reporting a file it may already have read.
+                worker.join(500);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        FileRead finished = result.get();
+        return finished != null ? finished : FileRead.failure(fallbackName(uri), SharedPayloadStore.REASON_TIMED_OUT);
+    }
+
+    private static FileRead readOne(ContentResolver resolver, Uri uri, int index, long batchBytes, long timeoutMs) {
+        Metadata metadata = readMetadata(resolver, uri);
+
+        // Android accepts any shared type; the web layer's attachment rules filter.
+        String refusal = SharedPayloadStore.rejectionReason(index, metadata.size, batchBytes, true, true);
+        if (refusal != null) {
+            return FileRead.failure(metadata.name, refusal);
+        }
+
+        ReadResult bytes = readBytes(resolver, uri, metadata.size, timeoutMs);
+        if (bytes.reason != null) {
+            return FileRead.failure(metadata.name, bytes.reason);
+        }
+        return new FileRead(metadata.name, readMimeType(resolver, uri), bytes.data);
+    }
+
+    private static String fallbackName(Uri uri) {
+        String name = uri.getLastPathSegment();
+        return name == null || name.isEmpty() ? "file" : name;
     }
 
     private static String readText(Intent intent) {
@@ -296,8 +347,32 @@ final class SharedIntentReader {
         }
     }
 
-    private static final class Metadata {
+    private static final class FileRead {
         final String name;
+        final String mimeType;
+        final byte[] data;
+        final String reason;
+
+        FileRead(String name, String mimeType, byte[] data) {
+            this.name = name;
+            this.mimeType = mimeType;
+            this.data = data;
+            this.reason = null;
+        }
+
+        private FileRead(String name, String reason) {
+            this.name = name;
+            this.mimeType = null;
+            this.data = null;
+            this.reason = reason;
+        }
+
+        static FileRead failure(String name, String reason) {
+            return new FileRead(name, reason);
+        }
+    }
+
+    private static final class Metadata {        final String name;
         final long size;
 
         Metadata(String name, long size) {

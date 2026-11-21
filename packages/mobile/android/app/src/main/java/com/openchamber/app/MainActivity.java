@@ -45,6 +45,9 @@ public class MainActivity extends BridgeActivity {
         // a taken share again would re-arm content the page already has.
         if (signature != null && !signature.equals(takenSignature)) {
             readShare(getIntent(), signature);
+        } else if (takenSignature != null) {
+            // The state that carried this signature must survive the next recreation too.
+            sharedIntentSignature = takenSignature;
         }
     }
 
