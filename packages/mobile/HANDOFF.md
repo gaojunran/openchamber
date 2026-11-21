@@ -105,13 +105,16 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **Share intake (text, links, files)** — Android: `ACTION_SEND`/`ACTION_SEND_MULTIPLE` start
   `MainActivity`, which reads the intent off the UI thread (`SharedIntentReader`) into
   `SharedPayloadStore`; a share that arrives while the app runs comes through `onNewIntent`.
-  `SharedFilesPlugin` hands the payload to the page, which opens a new session draft with the
-  files attached, unsent and local, and the text or link typed into the composer. Files go
-  through the composer's own policy, and every refusal is reported by name: more than eight
-  files, a file over 10 MB (the composer inlines nothing larger), a batch over 32 MB, a type
-  the composer refuses, an empty file, a stream that ends before its declared size, or a
-  provider that stops responding. A stalled provider is cut off (15 s per file, 30 s per
-  share) and named, so later shares are not stuck behind it.
+  `SharedIntentReader.signature` identifies the share an intent carries: an activity restored
+  with the same intent it already handed over skips it, and one restored with a new share reads
+  it, so process death does not drop the share and a taken one is not read twice.
+  `SharedFilesPlugin` hands the payload to the page, which opens a new session draft (or adds to
+  the draft already open) with the files attached, unsent and local, and the text or link typed
+  into the composer. Files go through the composer's own policy, and every refusal is reported
+  by name in the app's language: more than eight files, a file over 10 MB (the composer inlines
+  nothing larger), a batch over 32 MB, a type the composer refuses, an empty file, a stream that
+  ends before its declared size, or a provider that stops responding. A stalled provider is cut
+  off (15 s per file, 30 s per share) and named, so later shares are not stuck behind it.
 - **Android share-intake tests** — `SharedPayloadTest` covers the accept/refuse decision in a
   JVM test. `SharedIntentReaderTest` runs on a device (`./gradlew :app:connectedDebugAndroidTest`)
   against a real `ContentResolver` and a real provider serving `content://` URIs from files and

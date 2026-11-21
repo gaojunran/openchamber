@@ -595,9 +595,9 @@ render.
 
 ### Why a share waits for the draft to be the one on screen
 
-A share (the Android share intent) opens a new-session draft and leaves its files,
-text and the names the native side refused in `input-store.pendingDraftContent`,
-addressed by the draft's id. `usePendingSharedDraftContent` applies it from the
+A share (the Android share intent) opens a new-session draft, or adds to the one already
+open so its text is not replaced, and leaves its files, text and the names the native side
+refused in `input-store.pendingDraftContent`, addressed by the draft's id. `usePendingSharedDraftContent` applies it from the
 composer that renders that draft, and only once the composer's column shows no
 session. The column renders the deferred selection (`chatColumnSession`,
 `sync/DOCUMENTATION.md` "Session switch commit"), so for one commit after
@@ -608,7 +608,9 @@ would look empty.
 Files go through `attachSharedFiles`, not `attachFilesWithCitation`: a share is
 attached as unsent local attachments (`addAttachedFile` inlines it under the
 composer's own limit) and is not written to a temp file on a server, because a
-new draft has no session or project yet and the user has not pressed Send. That
+new draft has no session or project yet and the user has not pressed Send. It runs
+as tracked composer work like every other intake, so a Send that arrives while a
+large file is still being prepared waits for it instead of going without it. That
 call also returns the files the composer's policy refused, so the share reports
 them by name in the same toast as the native refusals; a share sheet gives no
 second chance, and a file that vanished silently is the failure mode to avoid.

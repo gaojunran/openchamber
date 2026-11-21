@@ -200,7 +200,7 @@ public class SharedIntentReaderTest {
         assertEquals("unreadable", payload.rejected.get(0).reason);
     }
 
-    @Test
+    @Test(timeout = 15_000)
     public void refusesAStalledStreamWithoutHoldingTheNextShare() {
         Uri stalled = TestFilesProvider.addStalled("slow.bin", "application/octet-stream");
         Intent slow = send(Intent.ACTION_SEND).setType("application/octet-stream").putExtra(Intent.EXTRA_STREAM, stalled);

@@ -3,7 +3,7 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { formatMessage, useI18nStore } from '@/lib/i18n';
+import { formatMessage, useI18nStore, type I18nKey } from '@/lib/i18n';
 import { getClientPlatform } from '@/lib/platform';
 
 const sharedFileSchema = z.object({
@@ -25,19 +25,27 @@ const takePendingResultSchema = z.object({
 
 export type RejectedSharedFile = z.infer<typeof rejectedFileSchema>;
 
-const REJECTED_FILE_REASONS = new Map<string, string>([
-  ['too-large', 'too large'],
-  ['batch-limit', 'share size limit'],
-  ['too-many', 'too many files'],
-  ['unsupported-type', 'unsupported type'],
-  ['unreadable', 'unreadable'],
-  ['timed-out', 'stopped responding'],
-]);
+const reasonKey = (reason: string): I18nKey | null => {
+  switch (reason) {
+    case 'too-large': return 'chat.chatInput.toast.sharedFileTooLarge';
+    case 'batch-limit': return 'chat.chatInput.toast.sharedFileBatchLimit';
+    case 'too-many': return 'chat.chatInput.toast.sharedFileTooMany';
+    case 'unsupported-type': return 'chat.chatInput.toast.sharedFileUnsupportedType';
+    case 'unreadable': return 'chat.chatInput.toast.sharedFileUnreadable';
+    case 'timed-out': return 'chat.chatInput.toast.sharedFileTimedOut';
+    default: return null;
+  }
+};
+
+const reasonLabel = (reason: string): string => {
+  const key = reasonKey(reason);
+  return key ? formatMessage(useI18nStore.getState().dictionary, key) : reason;
+};
 
 export const reportSkippedSharedFiles = (rejected: RejectedSharedFile[]): void => {
   if (rejected.length === 0) return;
   const summary = rejected
-    .map((file) => `${file.name}: ${REJECTED_FILE_REASONS.get(file.reason) ?? file.reason}`)
+    .map((file) => `${file.name}: ${reasonLabel(file.reason)}`)
     .join('\n');
   toast.error(formatMessage(useI18nStore.getState().dictionary, 'chat.chatInput.toast.someFilesSkipped', { summary }));
 };

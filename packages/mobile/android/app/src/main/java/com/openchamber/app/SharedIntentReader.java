@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Turns a share intent into the payload SharedFiles.takePending hands to the page. */
 final class SharedIntentReader {
@@ -26,6 +27,41 @@ final class SharedIntentReader {
     private static final int MAX_EMPTY_READS = 8;
 
     private SharedIntentReader() {}
+
+    /**
+     * Identifies the share an intent carries, so a recreated activity can tell a new share from
+     * the original intent it is being restored with. Null when the intent is not a share.
+     */
+    @SuppressWarnings("deprecation")
+    static String signature(Intent intent) {
+        if (intent == null) {
+            return null;
+        }
+        String action = intent.getAction();
+        boolean multiple = Intent.ACTION_SEND_MULTIPLE.equals(action);
+        if (!multiple && !Intent.ACTION_SEND.equals(action)) {
+            return null;
+        }
+        StringBuilder signature = new StringBuilder(action).append('|').append(intent.getType());
+        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        if (text != null) {
+            signature.append('|').append(text.hashCode());
+        }
+        if (multiple) {
+            ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (streams != null) {
+                for (Uri stream : streams) {
+                    signature.append('|').append(stream);
+                }
+            }
+        } else {
+            Uri stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (stream != null) {
+                signature.append('|').append(stream);
+            }
+        }
+        return signature.toString();
+    }
 
     /**
      * Reads one share, or returns null when the intent carries none. It performs file I/O,
@@ -178,14 +214,15 @@ final class SharedIntentReader {
     ) {
         InputStream stream = null;
         Thread watchdog = null;
+        final AtomicBoolean timedOut = new AtomicBoolean(false);
         try {
             stream = resolver.openInputStream(uri);
             if (stream == null) {
                 return ReadResult.failure(SharedPayloadStore.REASON_UNREADABLE);
             }
 
-            // A blocked read() cannot be interrupted, so the only way out is closing the stream
-            // from another thread; the read then throws and the file is reported.
+            // Android closes an input stream by signalling the threads blocked in it, so the
+            // watchdog's close ends a read the provider never answers.
             final Closeable guarded = stream;
             watchdog = new Thread(() -> {
                 try {
@@ -193,6 +230,7 @@ final class SharedIntentReader {
                 } catch (InterruptedException interrupted) {
                     return;
                 }
+                timedOut.set(true);
                 closeQuietly(guarded);
             }, "share-read-timeout");
             watchdog.setDaemon(true);
@@ -211,7 +249,7 @@ final class SharedIntentReader {
                     // Some providers return 0 instead of blocking; do not spin forever on it.
                     if (++emptyReads >= MAX_EMPTY_READS) {
                         return ReadResult.failure(
-                            watchdogFired(watchdog) ? SharedPayloadStore.REASON_TIMED_OUT : SharedPayloadStore.REASON_UNREADABLE
+                            timedOut.get() ? SharedPayloadStore.REASON_TIMED_OUT : SharedPayloadStore.REASON_UNREADABLE
                         );
                     }
                     continue;
@@ -237,7 +275,7 @@ final class SharedIntentReader {
             return new ReadResult(buffer.toByteArray(), null);
         } catch (IOException | RuntimeException error) {
             return ReadResult.failure(
-                watchdogFired(watchdog) ? SharedPayloadStore.REASON_TIMED_OUT : SharedPayloadStore.REASON_UNREADABLE
+                timedOut.get() ? SharedPayloadStore.REASON_TIMED_OUT : SharedPayloadStore.REASON_UNREADABLE
             );
         } finally {
             if (watchdog != null) {
@@ -245,11 +283,6 @@ final class SharedIntentReader {
             }
             closeQuietly(stream);
         }
-    }
-
-    /** True only after the watchdog closed the stream; a null watchdog never fired. */
-    private static boolean watchdogFired(Thread watchdog) {
-        return watchdog != null && !watchdog.isAlive();
     }
 
     private static void closeQuietly(Closeable stream) {

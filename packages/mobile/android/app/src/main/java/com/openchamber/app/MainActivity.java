@@ -10,6 +10,9 @@ import java.util.concurrent.Executors;
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SharedIntent";
+    private static final String STATE_SHARED_INTENT = "sharedIntentSignature";
+
+    private String sharedIntentSignature;
 
     // Reading a share means file I/O and base64; one reader keeps shares in arrival order.
     private final ExecutorService shareReader = Executors.newSingleThreadExecutor(runnable -> {
@@ -31,13 +34,25 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WidgetBridgePlugin.class);
         registerPlugin(MobileDevTunnelPlugin.class);
         registerPlugin(SharedFilesPlugin.class);
+        String signature = SharedIntentReader.signature(getIntent());
+        String takenSignature = savedInstanceState == null
+            ? null
+            : savedInstanceState.getString(STATE_SHARED_INTENT);
         super.onCreate(savedInstanceState);
         // With singleTask, each share is its own event: this intent on a cold start, later
-        // ones through onNewIntent. Rotation does not recreate the activity (configChanges).
-        // A recreated activity repeats the original intent, which would arm a share the page
-        // already took, so only a real cold start reads it.
-        if (savedInstanceState == null) {
-            readShare(getIntent());
+        // ones through onNewIntent. A recreated activity can carry either the share it was
+        // already given or a new one, so the signature from the saved state decides; reading
+        // a taken share again would re-arm content the page already has.
+        if (signature != null && !signature.equals(takenSignature)) {
+            readShare(getIntent(), signature);
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (sharedIntentSignature != null) {
+            outState.putString(STATE_SHARED_INTENT, sharedIntentSignature);
         }
     }
 
@@ -45,13 +60,14 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        readShare(intent);
+        readShare(intent, SharedIntentReader.signature(intent));
     }
 
-    private void readShare(Intent intent) {
-        if (intent == null) {
+    private void readShare(Intent intent, String signature) {
+        if (intent == null || signature == null) {
             return;
         }
+        sharedIntentSignature = signature;
         shareReader.execute(() -> {
             long started = System.nanoTime();
             try {

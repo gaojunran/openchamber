@@ -325,50 +325,51 @@ export function useComposerFileIntake({
         if (useUIStore.getState().isMobile && !mobileShell.expanded) mobileShell.expand();
     }, [attachFilesWithCitationNow, insertTextAtSelection, largeTextPasteOfferIdRef, mobileShell, saveDocumentsWithPathCitation, setLargeTextPasteOffer, trackAttachWork, composerRef]);
 
-    const attachSharedFiles = React.useCallback(async (
-        files: File[],
-        leadingText: string = '',
-    ): Promise<RejectedSharedFile[]> => {
-        const attachmentDraftKey = useInputStore.getState().attachmentDraftKey;
-        const rejected: RejectedSharedFile[] = [];
-        const attachedNames: string[] = [];
-        const usedNames = () => [
-            ...useInputStore.getState().attachedFiles.map((file) => file.filename),
-            ...pendingPastedAttachmentFilenamesRef.current,
-            ...findImagePathCitationNames(composerRef.current?.getValue() ?? composerText.get()),
-        ];
-        const images = files.filter((file) => file.type.startsWith('image/'));
-        const others = files.filter((file) => !file.type.startsWith('image/'));
-        const imageNames = assignImageAttachmentFilenames(images, usedNames());
-        const otherNames = assignFileAttachmentFilenames(others, [...usedNames(), ...imageNames]);
+    const attachSharedFiles = React.useCallback((files: File[], leadingText: string = ''): Promise<RejectedSharedFile[]> => {
+        const work = (async (): Promise<RejectedSharedFile[]> => {
+            const attachmentDraftKey = useInputStore.getState().attachmentDraftKey;
+            const rejected: RejectedSharedFile[] = [];
+            const attachedNames: string[] = [];
+            const usedNames = () => [
+                ...useInputStore.getState().attachedFiles.map((file) => file.filename),
+                ...pendingPastedAttachmentFilenamesRef.current,
+                ...findImagePathCitationNames(composerRef.current?.getValue() ?? composerText.get()),
+            ];
+            const images = files.filter((file) => file.type.startsWith('image/'));
+            const others = files.filter((file) => !file.type.startsWith('image/'));
+            const imageNames = assignImageAttachmentFilenames(images, usedNames());
+            const otherNames = assignFileAttachmentFilenames(others, [...usedNames(), ...imageNames]);
 
-        const attach = async (file: File, name: string) => {
-            try {
-                const attached = await addAttachedFile(
-                    renameFileForAttachmentCitation(file, name),
-                    undefined,
-                    (landed) => attachedNames.push(...landed.map((entry) => entry.filename)),
-                );
-                if (!attached) rejected.push({ name: file.name, reason: 'unsupported-type' });
-            } catch {
-                rejected.push({
-                    name: file.name,
-                    reason: file.size > MAX_INLINE_ATTACHMENT_BYTES ? 'too-large' : 'unreadable',
-                });
+            const attach = async (file: File, name: string) => {
+                try {
+                    const attached = await addAttachedFile(
+                        renameFileForAttachmentCitation(file, name),
+                        undefined,
+                        (landed) => attachedNames.push(...landed.map((entry) => entry.filename)),
+                    );
+                    if (!attached) rejected.push({ name: file.name, reason: 'unsupported-type' });
+                } catch {
+                    rejected.push({
+                        name: file.name,
+                        reason: file.size > MAX_INLINE_ATTACHMENT_BYTES ? 'too-large' : 'unreadable',
+                    });
+                }
+            };
+            for (let index = 0; index < images.length; index += 1) {
+                if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
+                await attach(images[index], imageNames[index]);
             }
-        };
-        for (let index = 0; index < images.length; index += 1) {
-            if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
-            await attach(images[index], imageNames[index]);
-        }
-        for (let index = 0; index < others.length; index += 1) {
-            if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
-            await attach(others[index], otherNames[index]);
-        }
+            for (let index = 0; index < others.length; index += 1) {
+                if (useInputStore.getState().attachmentDraftKey !== attachmentDraftKey) return rejected;
+                await attach(others[index], otherNames[index]);
+            }
 
-        insertCitationAtSelection(attachedNames.length > 0 ? buildAttachmentCitationText(attachedNames) : '', leadingText);
-        return rejected;
-    }, [addAttachedFile, composerRef, composerText, insertCitationAtSelection, pendingPastedAttachmentFilenamesRef]);
+            insertCitationAtSelection(attachedNames.length > 0 ? buildAttachmentCitationText(attachedNames) : '', leadingText);
+            return rejected;
+        })();
+        void trackAttachWork(work.then(() => undefined, () => undefined));
+        return work;
+    }, [addAttachedFile, composerRef, composerText, insertCitationAtSelection, pendingPastedAttachmentFilenamesRef, trackAttachWork]);
 
     const attachFilesWithCitation = React.useCallback((files: File[], leadingText: string = ''): Promise<void> => {
         const documents = files.filter((file) => isDocumentAttachmentFilename(file.name));

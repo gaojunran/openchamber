@@ -56,7 +56,9 @@ const openSharedFilesSession = (intent: SharedFilesIntent): void => {
     reportSkippedSharedFiles(intent.rejected);
     return;
   }
-  useSessionUIStore.getState().openNewSessionDraft();
+  if (!useSessionUIStore.getState().newSessionDraft.open) {
+    useSessionUIStore.getState().openNewSessionDraft();
+  }
   const draftId = useSessionUIStore.getState().newSessionDraft.draftId;
   useInputStore.getState().requestDraftContent(draftId, intent);
 };
