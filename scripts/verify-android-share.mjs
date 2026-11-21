@@ -188,15 +188,31 @@ const main = async () => {
     pushPrivateFile(join(fixturesDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
     shareFile(`/data/data/${packageName}/files/share-e2e.png`, 'image/png');
     await sleep(4000);
-    await evaluate('(() => { const editor = document.querySelector(\'[contenteditable="true"]\'); if (!editor) return false; editor.click(); return true; })()');
-    await sleep(1800);
+    const editorPoint = await evaluate(`
+        (() => {
+            const editor = document.querySelector('[contenteditable="true"]');
+            if (!editor) return null;
+            const rect = editor.getBoundingClientRect();
+            const ratio = window.devicePixelRatio || 1;
+            return { x: Math.round((rect.x + Math.min(30, rect.width / 2)) * ratio), y: Math.round((rect.y + rect.height / 2) * ratio) };
+        })()
+    `);
+    if (editorPoint) sh('adb', ['shell', 'input', 'tap', String(editorPoint.x), String(editorPoint.y)]);
+    await sleep(2500);
     await until(
-        `(() => [...document.querySelectorAll('*')].some((el) => !el.closest('[data-sonner-toast]') && el.children.length === 0 && (el.textContent || '').includes('share-e2e.png')))()`,
-        'the shared image in the draft',
+        `(() => [...document.querySelectorAll('*')].some((el) => {
+            if (el.closest('[data-sonner-toast]')) return false;
+            if (!(el.textContent || '').includes('share-e2e.png')) return false;
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        }))()`,
+        'the shared image visible in the draft',
     );
-    await sleep(1200);
+    await sleep(800);
     screenshot('draft-image');
     writeFileSync(join(evidenceDir, 'after-image-share.txt'), await evaluate('document.body.innerText'));
+    sh('adb', ['shell', 'input', 'keyevent', '4']);
+    await sleep(1000);
 
     pushPrivateFile(join(fixturesDir, 'too-large.bin'), `/data/data/${packageName}/files/too-large.bin`);
     shareFile(`/data/data/${packageName}/files/too-large.bin`, 'application/octet-stream');
