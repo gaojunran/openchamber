@@ -16,6 +16,7 @@ const arg = (name, fallback) => {
 
 const serverUrl = arg('server-url', 'http://10.0.2.2:4123');
 const evidenceDir = arg('evidence', '/tmp/evidence');
+const fixturesDir = arg('fixtures', 'evidence');
 const packageName = arg('package', 'com.openchamber.app');
 const port = Number(arg('port', '9222'));
 
@@ -136,20 +137,20 @@ const main = async () => {
     await sleep(2000);
     screenshot('connect-screen');
 
-    const clickedRemoteTab = await evaluate(`
+    const clickedManual = await evaluate(`
         (() => {
-            const tab = [...document.querySelectorAll('button')].find((button) => /remote/i.test(button.textContent || ''));
-            if (!tab) return false;
-            tab.click();
+            const button = [...document.querySelectorAll('button')].find((candidate) => /connect by address/i.test(candidate.textContent || ''));
+            if (!button) return false;
+            button.click();
             return true;
         })()
     `);
-    log('remote tab clicked', clickedRemoteTab);
-    await until('!!document.querySelector("#remote-url")', 'the remote address field');
+    log('connect-by-address clicked', clickedManual);
+    await until('!!document.querySelector(\'input[type="url"]\')', 'the server address field');
 
     const filled = await evaluate(`
         (() => {
-            const field = document.querySelector('#remote-url');
+            const field = document.querySelector('input[type="url"]');
             if (!field) return false;
             const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
             setter.call(field, ${JSON.stringify(serverUrl)});
@@ -161,16 +162,17 @@ const main = async () => {
 
     const connected = await evaluate(`
         (() => {
-            const button = [...document.querySelectorAll('button')].find((candidate) => /^connect/i.test((candidate.textContent || '').trim()));
+            const button = [...document.querySelectorAll('button[type="submit"]')].find((candidate) => !candidate.disabled);
             if (!button) return false;
             button.click();
             return true;
         })()
     `);
     log('connect clicked', connected);
-    await until('!document.querySelector("#remote-url")', 'the connect form to close', 120_000);
-    await sleep(6000);
+    await until('!document.querySelector(\'input[type="url"]\')', 'the connect form to close', 180_000);
+    await sleep(8000);
     screenshot('connected');
+    writeFileSync(join(evidenceDir, 'ui-connected.xml'), dumpPage());
 
     shareText('https://openchamber.dev/docs/shared-from-another-app');
     await until(
@@ -183,7 +185,7 @@ const main = async () => {
     log('composer holds the shared link', /shared-from-another-app/.test(composerText));
     writeFileSync(join(evidenceDir, 'after-text-share.txt'), composerText);
 
-    pushPrivateFile(join(evidenceDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
+    pushPrivateFile(join(fixturesDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
     shareFile(`/data/data/${packageName}/files/share-e2e.png`, 'image/png');
     await until('/share-e2e\\.png/.test(document.body.innerText)', 'the shared image in the draft');
     await sleep(1500);
@@ -208,6 +210,7 @@ main().catch((error) => {
     console.error('[verify] failed:', error);
     try {
         screenshot('failure');
+        writeFileSync(join(evidenceDir, 'failure-ui.xml'), dumpPage());
         writeFileSync(join(evidenceDir, 'failure-logcat.txt'), sh('adb', ['logcat', '-d', '-t', '400']));
     } catch {
         // Evidence collection is best effort once the run already failed.

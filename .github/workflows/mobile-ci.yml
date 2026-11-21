@@ -125,7 +125,7 @@ jobs:
         run: bun install
       - name: Install opencode, which the server needs to serve
         run: |
-          npm install -g "@opencode/cli@$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
+          npm install -g @opencode/cli@$(node -p "const pkg=require('./packages/web/package.json'); pkg.opencodeCli?.version ?? pkg.engines?.opencode?.replace(/[^0-9.]/g,'').split('.').slice(0,3).join('.') ?? 'latest'")
           opencode --version
       - name: Build the Android debug app with its assets
         run: bun run mobile:build:android:debug
@@ -187,13 +187,20 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -euo pipefail
-            adb root
-            sleep 3
+            adb root || true
+            sleep 5
+            adb wait-for-device
             adb install -r packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n com.openchamber.app/.MainActivity
             node scripts/verify-android-share.mjs \
               --server-url http://10.0.2.2:4123 \
-              --evidence "$GITHUB_WORKSPACE/evidence"
+              --evidence /tmp/evidence
+      - name: Copy the evidence into the workspace
+        if: always()
+        run: |
+          mkdir -p evidence
+          cp -r /tmp/evidence/. evidence/ 2>/dev/null || true
+          ls -l evidence
       - name: Upload the evidence
         if: always()
         uses: actions/upload-artifact@v4
