@@ -95,7 +95,7 @@ export const ArchiveArtifact: React.FC<{
         ) : actions}
       />
       {tooLarge ? <div className="p-3 typography-ui text-muted-foreground">{t('filesView.artifact.archive.entryTooLarge')}</div> : null}
-      <ScrollableOverlay outerClassName="min-h-0 flex-1">
+      <ScrollableOverlay memoryKey={opened ? null : `archive:${path}`} outerClassName="min-h-0 flex-1">
         {!opened ? (
           <ul className="flex flex-col p-1">
             {state.entries.map((entry) => (

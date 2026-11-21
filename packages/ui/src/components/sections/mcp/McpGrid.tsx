@@ -164,6 +164,8 @@ export const McpGrid: React.FC = () => {
     <SettingsPageLayout
       title={t('settings.page.mcp.title')}
       namedBySidebar
+      memoryKey={hasQuery ? `settings:mcp:${query.trim()}` : 'settings:mcp'}
+      memoryReady={rows.length > 0}
     >
       <SettingsCardToolbar
         search={rows.length > 0 ? { value: query, onChange: setQuery, placeholder: t('settings.mcp.grid.searchPlaceholder') } : null}

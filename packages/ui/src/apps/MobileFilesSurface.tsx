@@ -101,10 +101,12 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
   const setSelectedPath = useFilesViewTabsStore((state) => state.setSelectedPath);
   const [route, setRoute] = React.useState<MobileFilesRoute>(() => ({ type: 'browser', directory: root }));
   const [entries, setEntries] = React.useState<FileListEntry[]>([]);
+  const [entriesDirectory, setEntriesDirectory] = React.useState<string | null>(null);
   const [isLoadingDirectory, setIsLoadingDirectory] = React.useState(false);
   const [directoryError, setDirectoryError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<FileSearchResult[]>([]);
+  const [searchResultsQuery, setSearchResultsQuery] = React.useState('');
   const [isSearching, setIsSearching] = React.useState(false);
   const directoryLoadRequestIdRef = React.useRef(0);
 
@@ -127,6 +129,7 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
         return a.name.localeCompare(b.name);
       }));
+      setEntriesDirectory(directory);
     } catch (error) {
       if (directoryLoadRequestIdRef.current !== requestId) return;
       if (options?.background) {
@@ -134,6 +137,7 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
         return;
       }
       setEntries([]);
+      setEntriesDirectory(directory);
       setDirectoryError(error instanceof Error ? error.message : t('mobile.files.error.listFailed'));
     } finally {
       if (directoryLoadRequestIdRef.current === requestId) {
@@ -181,6 +185,7 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       setSearchResults([]);
+      setSearchResultsQuery('');
       setIsSearching(false);
       return;
     }
@@ -190,10 +195,16 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
       setIsSearching(true);
       void files.search({ directory: route.directory, query: normalizedQuery, maxResults: 40 })
         .then((results) => {
-          if (!cancelled) setSearchResults(results);
+          if (!cancelled) {
+            setSearchResults(results);
+            setSearchResultsQuery(normalizedQuery);
+          }
         })
         .catch(() => {
-          if (!cancelled) setSearchResults([]);
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearchResultsQuery(normalizedQuery);
+          }
         })
         .finally(() => {
           if (!cancelled) setIsSearching(false);
@@ -225,6 +236,13 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
     setRoute((current) => ({ type: 'file', path: target, returnDirectory: current.type === 'file' ? current.returnDirectory : root }));
     if (pendingFileFocusPath) useUIStore.getState().setPendingFileFocusPath(null);
   }, [pendingFileFocusPath, pendingFileNavigation, root, setSelectedPath]);
+
+  const searchQuery = query.trim();
+  const listKey = route.type === 'browser'
+    ? (searchQuery ? `search:${route.directory}:${searchQuery}` : `dir:${route.directory}`)
+    : null;
+  const listReady = route.type === 'browser'
+    && (searchQuery ? !isSearching && searchResultsQuery === searchQuery : entriesDirectory === route.directory);
 
   if (!root) {
     return <MobileFilesState message={t('mobile.files.empty.noDirectory')} />;
@@ -317,7 +335,7 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
         ) : null}
       </div>
 
-      <ScrollableOverlay outerClassName="min-h-0 flex-1" className="px-2 pb-3 pt-1" useScrollShadow disableHorizontal>
+      <ScrollableOverlay memoryKey={listKey} memoryReady={listReady} outerClassName="min-h-0 flex-1" className="px-2 pb-3 pt-1" useScrollShadow disableHorizontal>
         {directoryError ? (
           <MobileFilesState message={directoryError} />
         ) : query.trim() ? (

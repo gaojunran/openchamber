@@ -22,6 +22,7 @@ import { useSkillsCatalogStore } from '@/stores/useSkillsCatalogStore';
 import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
+import { SettingsSplitStage } from '@/components/views/SettingsSplitStage';
 import { AgentsSidebar } from '@/components/sections/agents/AgentsSidebar';
 import { AgentsPage } from '@/components/sections/agents/AgentsPage';
 import { BehaviorPage } from '@/components/sections/behavior/BehaviorPage';
@@ -332,6 +333,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
     return getSettingsPageMeta(settingsSlug);
   }, [settingsSlug]);
 
+  const navSearch = settingsSearchQuery.trim();
+  const navMemoryKey = isMobile && mobileStage === 'nav' ? (navSearch ? `nav:search:${navSearch}` : 'nav') : null;
 
   const openChamberSectionBySlug: Partial<Record<SettingsPageSlug, OpenChamberSection>> = React.useMemo(() => ({
     general: 'general',
@@ -857,7 +860,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
           </div>
         </div>
 
-        <ScrollableOverlay outerClassName="flex-1 min-h-0" disableHorizontal>
+        <ScrollableOverlay memoryKey={navMemoryKey} outerClassName="flex-1 min-h-0" disableHorizontal>
           <div className="flex flex-col gap-0.5 px-4 pt-4 pb-2">
             {hasSearchQuery ? (
               settingsSearchResults.length > 0 ? (() => {
@@ -991,21 +994,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       return <div className="flex-1 bg-background" />;
     }
 
-    if (mobileStage === 'page-sidebar') {
-      if (activePageMeta.kind !== 'split') {
-        const fallback = renderPageContent(settingsSlug);
-        return (
-          <ScrollableOverlay outerClassName="flex-1 min-h-0" className="bg-background" disableHorizontal>
-            <ErrorBoundary>{fallback}</ErrorBoundary>
-          </ScrollableOverlay>
-        );
-      }
+    if (activePageMeta.kind === 'split') {
+      const showsContent = mobileStage === 'page-content';
       return (
-        <ScrollableOverlay outerClassName="flex-1 min-h-0" className="bg-background" disableHorizontal>
-          <ErrorBoundary>
-            {renderPageSidebar(settingsSlug, { onItemSelect: handleMobilePageSidebarItemSelect })}
-          </ErrorBoundary>
-        </ScrollableOverlay>
+        <SettingsSplitStage
+          showSidebar={!showsContent}
+          sidebar={renderPageSidebar(settingsSlug, { onItemSelect: handleMobilePageSidebarItemSelect })}
+          content={showsContent ? renderPageContent(settingsSlug) : null}
+        />
       );
     }
 

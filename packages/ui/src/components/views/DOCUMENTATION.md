@@ -95,6 +95,11 @@ stores own durable state and shared caches.
   or returning to navigation cannot re-enter a remembered page. Header Back and
   Android Back follow the same page-list-item ladder; the shell handles only a
   press at its root when it owns Back.
+- A phone Settings list keeps its offset while a page replaces it, and its search
+  results are their own list, so clearing the search returns the list where it
+  was. A split page keeps its item list mounted under the open item instead of
+  unmounting it, so Back returns to both the page's own list position and the
+  settings list's.
 - Settings links and search open the owning page before revealing an item. The
   reveal retries for a bounded number of frames because detail pages load late.
 - Tracker lookup accepts only the linked item. When issue and change-request

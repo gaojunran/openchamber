@@ -24,6 +24,8 @@ interface SettingsPageLayoutProps {
   className?: string;
   outerClassName?: string;
   fillHeight?: boolean;
+  memoryKey?: string | null;
+  memoryReady?: boolean;
 }
 
 export const SettingsPageLayout: React.FC<SettingsPageLayoutProps> = ({
@@ -39,6 +41,8 @@ export const SettingsPageLayout: React.FC<SettingsPageLayoutProps> = ({
   namedBySidebar = false,
   onBlurCapture,
   fillHeight = false,
+  memoryKey,
+  memoryReady,
 }) => {
   const scrollbarTopClearance = React.useContext(SettingsScrollbarTopClearanceContext);
   const { isMobile } = useDeviceInfo();
@@ -48,6 +52,8 @@ export const SettingsPageLayout: React.FC<SettingsPageLayoutProps> = ({
 
   return (
     <ScrollableOverlay
+      memoryKey={memoryKey}
+      memoryReady={memoryReady}
       outerClassName={cn('h-full', outerClassName)}
       className={cn('w-full @container', fillHeight && 'flex flex-col')}
       verticalTrackStart={scrollbarTopClearance}

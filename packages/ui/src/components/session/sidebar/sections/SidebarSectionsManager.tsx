@@ -184,7 +184,7 @@ const SectionList: React.FC<{ pages: boolean }> = ({ pages }) => {
     saveSidebarSections(arrayMove(sections, from, to));
   };
   return (
-    <ScrollableOverlay outerClassName="min-h-0" className="flex flex-col gap-3 p-3" disableHorizontal>
+    <ScrollableOverlay outerClassName="min-h-0" className="flex flex-col gap-3 p-3" disableHorizontal memoryKey="sections-manager">
       <div className="flex items-center justify-between gap-2">
         <span className="typography-ui-label font-medium text-foreground">{t('sessions.sidebar.sections.title')}</span>
         <DropdownMenu>

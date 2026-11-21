@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollShadow, ScrollShadowBands } from '@/components/ui/ScrollShadow';
+import { useListScrollMemory } from '@/hooks/useListScrollMemory';
 import { OverlayScrollbar } from '@/components/ui/OverlayScrollbar';
 import { Icon } from '@/components/icon/Icon';
 import { ChangeRow } from './ChangeRow';
@@ -57,6 +58,8 @@ interface ChangesPanelProps {
   onVisiblePathsChange?: (paths: string[]) => void;
   onRevertAll?: (paths: string[]) => Promise<void> | void;
   onRevertDirectory?: (paths: string[]) => Promise<void> | void;
+  memoryKey?: string | null;
+  memoryReady?: boolean;
 }
 
 const CHANGE_LIST_VIRTUALIZE_THRESHOLD = 1000;
@@ -89,10 +92,17 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
   onVisiblePathsChange,
   onRevertAll,
   onRevertDirectory,
+  memoryKey,
+  memoryReady,
 }) => {
   const { t } = useI18n();
   const { isMobile } = useDeviceInfo();
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const memoryBind = useListScrollMemory(memoryKey, { ready: memoryReady });
+  const attachScroller = React.useCallback((node: HTMLElement | null) => {
+    scrollRef.current = node instanceof HTMLDivElement ? node : null;
+    memoryBind(node);
+  }, [memoryBind]);
   const gitChangesViewMode = useUIStore((state) => state.gitChangesViewMode);
   const isTreeView = gitChangesViewMode === 'tree';
 
@@ -520,7 +530,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
     <>
       <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
         <ScrollShadow
-          ref={scrollRef}
+          ref={attachScroller}
           surface={scrollSurface}
           className="overlay-scrollbar-target overlay-scrollbar-container min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto"
         >

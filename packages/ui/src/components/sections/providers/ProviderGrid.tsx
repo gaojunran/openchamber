@@ -206,6 +206,8 @@ export const ProviderGrid: React.FC<ProviderGridProps> = ({ providers, integrati
       title={t('settings.page.providers.title')}
       namedBySidebar
       className="[&>section:first-of-type]:pt-8"
+      memoryKey={hasQuery ? `settings:providers:${query.trim()}` : 'settings:providers'}
+      memoryReady={providers.length > 0}
     >
       {locked ? <EnterpriseProvidersNotice directory={directory} integrations={integrations} /> : null}
       <SettingsCardToolbar

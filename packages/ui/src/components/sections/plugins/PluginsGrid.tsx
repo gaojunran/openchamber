@@ -291,6 +291,8 @@ export const PluginsGrid: React.FC<{
     <SettingsPageLayout
       title={t('settings.page.plugins.title')}
       namedBySidebar
+      memoryKey={hasQuery ? `settings:plugins:${query.trim()}` : 'settings:plugins'}
+      memoryReady={items.length > 0}
     >
       <SettingsCardToolbar
         search={items.length > 0 ? { value: query, onChange: setQuery, placeholder: t('settings.plugins.grid.searchPlaceholder') } : null}

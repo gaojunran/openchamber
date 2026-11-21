@@ -58,7 +58,7 @@ export const MoveSessionDialog: React.FC<{
             <DialogTitle>{t('sessions.moveSession.title')}</DialogTitle>
             <DialogDescription>{t('sessions.moveSession.description')}</DialogDescription>
           </DialogHeader>
-          <ScrollableOverlay outerClassName="max-h-[50vh]" className="flex flex-col gap-0.5" disableHorizontal>
+          <ScrollableOverlay outerClassName="max-h-[50vh]" className="flex flex-col gap-0.5" disableHorizontal memoryKey="move-session:projects">
             {projects.map((project) => {
               const isCurrent = normalizePath(project.path) === currentDirectory;
               return (

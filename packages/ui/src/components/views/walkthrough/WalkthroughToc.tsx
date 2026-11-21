@@ -106,14 +106,18 @@ export const WalkthroughToc = memo(function WalkthroughToc({
   const { t } = useI18n();
   const activeRef = useRef<HTMLButtonElement | null>(null);
   const page = width === undefined;
+  const previousActiveId = useRef<string | null>(page ? activeStopId : null);
 
   useEffect(() => {
+    if (previousActiveId.current === activeStopId) return;
+    previousActiveId.current = activeStopId;
     activeRef.current?.scrollIntoView({ block: 'nearest' });
   }, [activeStopId]);
 
   const contents = (
     <ScrollableOverlay
       as="nav"
+      memoryKey={page ? `walkthrough:toc:${view.walkthrough.title}` : null}
       outerClassName="min-h-0 flex-1"
       className={cn('flex flex-col', page ? 'px-3 py-3' : 'p-2')}
       disableHorizontal

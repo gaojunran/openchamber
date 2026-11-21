@@ -75,6 +75,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ visible = true, onCloseFil
   const uploads = useFileUploads({ fileDirectory, scope });
   const operations = useFileOperations({ fileDirectory, fileDocument, layout, scope, tabs, files, isMobile, t });
   const search = useFileSearch({ scope });
+  const treeSearchQuery = search.debouncedSearchQuery.trim();
+  const treeMemoryKey = isMobile && !layout.showMobilePageContent
+    ? (treeSearchQuery ? `tree:${scope.root}:search:${treeSearchQuery}` : `tree:${scope.root}`)
+    : null;
   const fileSaving = useFileSaving({ canvasState, diagram, draft, fileDocument, scope, tabs, files, t });
   useFileKeybinds({
     canvasState, editor, fileSaving, markdownPreview,
@@ -150,6 +154,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ visible = true, onCloseFil
   });
   const fileTreePanel = renderFileTreePanel({
     fileDirectory, fileOpening, fileTreeRendering, operations, scope, search, tabs, uploads, t,
+    memoryKey: treeMemoryKey,
+    memoryReady: !search.searching,
   });
   const imageFullscreenViewer = renderFileImageFullscreen({ artifacts, fileDocument, imageFullscreen, tabs, t });
   const { showMobilePageContent } = layout;

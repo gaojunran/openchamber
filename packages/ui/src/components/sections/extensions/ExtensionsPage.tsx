@@ -1139,7 +1139,7 @@ export const ExtensionsPage: React.FC = () => {
     <>
       <SettingsPageLayout
         title={t('settings.page.extensions.title')}
-        namedBySidebar
+        namedBySidebar memoryKey="settings:extensions" memoryReady={hasItems}
         headerEnd={unsupported ? null : (
           <div className="flex items-center gap-2">
             {enterpriseMode ? null : (

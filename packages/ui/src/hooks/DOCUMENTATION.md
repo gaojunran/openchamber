@@ -47,6 +47,13 @@ A hook here owns the lifetime of what it subscribes to. Mechanics that another m
 - A remembered reading position is captured before the list is hidden, because ref cleanup can run after the hide when nothing measurable is left. An unknown at-end measurement never clears the record, and a hidden container never overwrites it.
 - A message link is an explicit request: it loads history until the message is found or the history ends. A remembered position is a convenience and gives up after a few batches.
 
+### List scroll memory
+
+- `useListScrollMemory` covers a list that leaves the screen together with its scroller: a file preview, a settings page, a diff tab. It records the offset per key from the scroller's own scroll events and restores it in a layout effect, so a short replacement cannot clamp the browser's restore to its own height. Lists opt in through `ScrollableOverlay`'s `memoryKey` and `memoryReady` props, `SettingsPageLayout`'s for a settings page, or `ChangesPanel`'s for its own scroller; only a raw scroller outside those primitives (`ReceivedPagesTab`) binds the hook itself.
+- A key whose content has not arrived yet neither restores nor records (`ready`), or the previous entries' offset, already clamped, would be saved as the new list's. A binding restores once: a later `ready` flip must not move a list already on screen, which would yank it under the user. A null key is a view without a list and starts at its top; each folder, search, mode and repository is its own key.
+- A panel unmounted together with its list passes a module-level map, because the hook's own map dies with the instance.
+- The other shape, one scroller that stays mounted while a preview swaps its content, is `usePreviewReturnScroll` in `components/references`; it restores on the same node only.
+
 ### Read-aloud, TTS and dictation
 
 - Mobile Safari only unlocks audio inside a user gesture. Playback uses one shared `AudioContext`, resumes it when suspended, and plays a silent buffer to unlock; preparation must happen before the first asynchronous step.
