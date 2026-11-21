@@ -174,6 +174,19 @@ const main = async () => {
     screenshot('connected');
     writeFileSync(join(evidenceDir, 'ui-connected.xml'), dumpPage());
 
+    const expanded = await evaluate(`
+        (() => {
+            const prompt = document.querySelector('[data-composer-morph-prompt]');
+            if (!prompt) return false;
+            prompt.click();
+            return true;
+        })()
+    `);
+    log('composer pill clicked', expanded);
+    await until('!!document.querySelector(\'[contenteditable="true"]\')', 'the expanded composer');
+    await sleep(1200);
+    screenshot('composer-expanded');
+
     shareText('https://openchamber.dev/docs/shared-from-another-app');
     await until(
         '/shared-from-another-app/.test(document.body.innerText)',
@@ -187,35 +200,18 @@ const main = async () => {
 
     pushPrivateFile(join(fixturesDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
     shareFile(`/data/data/${packageName}/files/share-e2e.png`, 'image/png');
-    await sleep(4000);
-    const editorPoint = await evaluate(`
-        (() => {
-            const editors = [...document.querySelectorAll('[contenteditable="true"]')]
-                .map((el) => el.getBoundingClientRect())
-                .filter((rect) => rect.width > 40 && rect.height > 10 && rect.top < window.innerHeight && rect.bottom > 0);
-            if (editors.length === 0) return null;
-            const rect = editors[editors.length - 1];
-            const ratio = window.devicePixelRatio || 1;
-            return { x: Math.round((rect.x + 20) * ratio), y: Math.round((rect.y + rect.height / 2) * ratio) };
-        })()
-    `);
-    log('editor tap point', JSON.stringify(editorPoint));
-    if (editorPoint) sh('adb', ['shell', 'input', 'tap', String(editorPoint.x), String(editorPoint.y)]);
-    await sleep(2500);
     await until(
         `(() => [...document.querySelectorAll('*')].some((el) => {
             if (el.closest('[data-sonner-toast]')) return false;
             if (!(el.textContent || '').includes('share-e2e.png')) return false;
             const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
+            return rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0;
         }))()`,
         'the shared image visible in the draft',
     );
-    await sleep(800);
+    await sleep(1200);
     screenshot('draft-image');
     writeFileSync(join(evidenceDir, 'after-image-share.txt'), await evaluate('document.body.innerText'));
-    sh('adb', ['shell', 'input', 'keyevent', '4']);
-    await sleep(1000);
 
     pushPrivateFile(join(fixturesDir, 'too-large.bin'), `/data/data/${packageName}/files/too-large.bin`);
     shareFile(`/data/data/${packageName}/files/too-large.bin`, 'application/octet-stream');
