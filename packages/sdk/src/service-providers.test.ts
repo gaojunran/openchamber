@@ -257,6 +257,19 @@ describe('source-control provider contract', () => {
     expect(schemas.data.listIssues.safeParse(null).success).toBe(false);
   });
 
+  test('a timeline reference is checked entry by entry and stays absent when the host did not answer', () => {
+    const reference = { kind: 'pull', number: 2, url: 'https://tea.example.com/mona/tea/pulls/2', createdAt: '2026-10-03T10:00:00Z' };
+    const detail = schemas.data.getIssue.parse({ number: 1, references: [reference] });
+    expect(detail.references).toEqual([reference]);
+    expect(Object.hasOwn(schemas.data.getIssue.parse({ number: 1 }), 'references')).toBe(false);
+    expect(Object.hasOwn(schemas.data.changeRequestContext.parse({ changeRequest: {} }), 'references')).toBe(false);
+    expect(schemas.data.changeRequestContext.safeParse({ references: [reference] }).success).toBe(true);
+    expect(schemas.data.changeRequestContext.safeParse({ references: [{ ...reference, kind: 'discussion' }] }).success).toBe(false);
+    expect(schemas.data.changeRequestContext.safeParse({ references: [{ ...reference, number: '2' }] }).success).toBe(false);
+    expect(schemas.data.getIssue.safeParse({ references: [{ ...reference, url: 'not a url' }] }).success).toBe(false);
+    expect(schemas.data.getIssue.safeParse({ references: [{ kind: 'issue', number: 1, url: 'https://tea.example.com/mona/tea/issues/1' }] }).success).toBe(false);
+  });
+
   test('the outbound proxy takes only a path on the instance and the allowed headers', () => {
     expect(schemas.outboundRequest.safeParse({ method: 'POST', path: '/api/v1/repos/mona/tea/pulls', headers: { 'content-type': 'application/json' }, body: '{}' }).success).toBe(true);
     expect(schemas.outboundRequest.safeParse({ method: 'GET', path: '//evil.example/x' }).success).toBe(false);

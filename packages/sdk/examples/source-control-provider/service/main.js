@@ -294,6 +294,10 @@ var QUOTA_PROVIDER_IDLE_MS = 10 * 60000;
 var SURFACE_CONTROLLERS = ["none", "agent", "user"];
 var CONTROLLERS = new Set(SURFACE_CONTROLLERS);
 // packages/sdk/examples/source-control-provider/service/main.ts
+var referencesPath = `./references${".js"}`;
+var { readReferences, withReferences } = await import(referencesPath);
+var diffPath = "./diff.js";
+var { mapChangedFile, splitUnifiedDiff } = await import(diffPath);
 var port = Number(process.env.OPENCHAMBER_SERVICE_PORT);
 var serviceToken = process.env.OPENCHAMBER_SERVICE_TOKEN ?? "";
 if (!port || !serviceToken) {
@@ -474,42 +478,6 @@ var mapComment = (call, raw, fallbackUrl) => {
   stamp(comment, raw);
   return comment;
 };
-var FILE_STATUSES = new Map([["added", "added"], ["deleted", "removed"], ["removed", "removed"], ["renamed", "renamed"]]);
-var mapChangedFile = (raw) => {
-  const file = { path: raw.filename, status: FILE_STATUSES.get(raw.status ?? "") ?? "modified" };
-  if (raw.additions !== undefined)
-    file.additions = raw.additions;
-  if (raw.deletions !== undefined)
-    file.deletions = raw.deletions;
-  if (raw.changes !== undefined)
-    file.changes = raw.changes;
-  return file;
-};
-var splitUnifiedDiff = (diff) => {
-  const parts = new Map;
-  const chunks = diff.split(/^(?=diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
-  for (const chunk of chunks) {
-    const lines = chunk.split(`
-`);
-    const plus = lines.find((line) => line.startsWith("+++ "));
-    const minus = lines.find((line) => line.startsWith("--- "));
-    const renamed = lines.find((line) => line.startsWith("rename to "));
-    let path = "";
-    if (plus && plus !== "+++ /dev/null")
-      path = plus.slice(4).replace(/^b\//, "");
-    else if (renamed)
-      path = renamed.slice("rename to ".length);
-    else if (minus && minus !== "--- /dev/null")
-      path = minus.slice(4).replace(/^a\//, "");
-    else
-      path = lines[0].match(/^diff --git a\/.+? b\/(.+)$/)?.[1] ?? "";
-    if (path)
-      parts.set(path.replace(/\t.*$/, ""), chunk.endsWith(`
-`) ? chunk : `${chunk}
-`);
-  }
-  return parts;
-};
 var listState = (state) => {
   if (state === "closed" || state === "merged")
     return "closed";
@@ -647,11 +615,12 @@ var handlers = {
     const number = integer(input, "number");
     const repo = repoPath(project);
     const includeDiff = input.includeDiff === true;
-    const [raw, { data: comments }, diff, changed] = await Promise.all([
+    const [raw, { data: comments }, diff, changed, references] = await Promise.all([
       readPull(call, project, number),
       api(call, "GET", `${repo}/issues/${number}/comments`),
       includeDiff ? apiText(call, `${repo}/pulls/${number}.diff`) : Promise.resolve(""),
-      includeDiff ? readChangedFiles(call, repo, number) : Promise.resolve([])
+      includeDiff ? readChangedFiles(call, repo, number) : Promise.resolve([]),
+      readReferences(input.includeTimeline === true ? api(call, "GET", `${repo}/issues/${number}/timeline`) : null)
     ]);
     const pull = mapPull(call, raw, project);
     const patches = splitUnifiedDiff(diff);
@@ -662,7 +631,7 @@ var handlers = {
         mapped.patch = patch;
       return mapped;
     });
-    return {
+    return withReferences({
       identity: call.identity,
       project,
       changeRequest: pull,
@@ -671,7 +640,7 @@ var handlers = {
       files,
       diff,
       ci: null
-    };
+    }, references);
   },
   listIssues: async (call, input) => {
     const { project } = await resolveRepo(call, text(input, "directory"), text(input, "remote"));
@@ -684,10 +653,13 @@ var handlers = {
   },
   getIssue: async (call, input) => {
     const { project } = await resolveRepo(call, text(input, "directory"), text(input, "remote"), selectorOf(input, "project"));
-    const { data } = await api(call, "GET", `${repoPath(project)}/issues/${integer(input, "number")}`);
+    const [{ data }, references] = await Promise.all([
+      api(call, "GET", `${repoPath(project)}/issues/${integer(input, "number")}`),
+      readReferences(input.includeTimeline === true ? api(call, "GET", `${repoPath(project)}/issues/${integer(input, "number")}/timeline`) : null)
+    ]);
     if (data.pull_request)
       throw new CallError(`#${data.number} is a pull request`, 404);
-    return mapIssue(call, data, project);
+    return withReferences(mapIssue(call, data, project), references);
   },
   issueComments: async (call, input) => {
     const { project } = await resolveRepo(call, text(input, "directory"), text(input, "remote"), selectorOf(input, "project"));

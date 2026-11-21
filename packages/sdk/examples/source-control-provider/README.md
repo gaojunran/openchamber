@@ -165,4 +165,6 @@ Rebuild after editing the service or the SDK:
 
 ```bash
 bun packages/sdk/scripts/bundle-guest.ts --node packages/sdk/examples/source-control-provider/service/main.ts packages/sdk/examples/source-control-provider/service/main.js
+bun packages/sdk/scripts/bundle-guest.ts --node packages/sdk/examples/source-control-provider/service/references.ts packages/sdk/examples/source-control-provider/service/references.js
+bun packages/sdk/scripts/bundle-guest.ts --node packages/sdk/examples/source-control-provider/service/diff.ts packages/sdk/examples/source-control-provider/service/diff.js
 ```

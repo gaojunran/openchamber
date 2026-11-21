@@ -159,6 +159,26 @@ describe('source-control provider example', () => {
     expect(await call('listLabels', { ...read(), project: { owner: 'mona', name: 'teapot' } })).toMatchObject({ ok: false, error: { status: 501 } });
   });
 
+  test('the timeline references the host asked for, mapped and deduped', async () => {
+    const detail = await data('getIssue', { ...read(), number: 1, includeTimeline: true });
+    expect(field(detail, 'references')).toEqual([{
+      kind: 'pull', number: 2, url: `${forge.origin}/mona/teapot/pulls/2`, createdAt: '2026-10-03T10:00:00Z',
+      title: 'Steep longer', repo: 'mona/teapot', author: { login: 'octo', avatarUrl: 'https://avatars.example.com/octo.png' },
+    }]);
+    expect(Object.hasOwn(await data('getIssue', { ...read(), number: 1 }), 'references')).toBe(false);
+
+    const context = await data('changeRequestContext', {
+      ...read(), number: 2, includeDiff: false, includeCIDetails: false, includeTimeline: true,
+    });
+    expect(field(context, 'references')).toEqual([
+      { kind: 'issue', number: 5, url: `${forge.origin}/mona/kettle/issues/5`, createdAt: '2026-10-02T10:00:00Z', title: 'Steam wand', repo: 'mona/kettle', author: { login: 'mona' } },
+      { kind: 'issue', number: 1, url: `${forge.origin}/mona/teapot/issues/1`, createdAt: '2026-10-06T10:00:00Z', title: 'Kettle whistles too early', repo: 'mona/teapot', author: { login: 'mona' } },
+    ]);
+    expect(Object.hasOwn(await data('changeRequestContext', {
+      ...read(), number: 2, includeDiff: false, includeCIDetails: false, includeTimeline: false,
+    }), 'references')).toBe(false);
+  });
+
   test('a pull request\'s diff, split per file in its context, and both sides of a changed file', async () => {
     const patch = await data('readChangeRequestPatch', { ...read(), number: 2 });
     expect(field(patch, 'meta')).toEqual({ owner: 'mona', repo: 'teapot', number: 2 });

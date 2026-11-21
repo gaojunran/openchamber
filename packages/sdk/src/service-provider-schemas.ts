@@ -182,6 +182,30 @@ const liveSummariesSchema = z.object({
 const identitySchema = z.object({ provider: text, instance: text }).passthrough();
 const projectSchema = z.object({ provider: text, instance: text, id: text, owner: text, name: text, url: text }).passthrough();
 
+const referenceUrlSchema = z.string().min(1).max(2_048).refine(
+  (value) => /^https?:\/\//i.test(value) && URL.canParse(value), { message: 'must be an http(s) URL' },
+);
+
+const referenceAuthorSchema = z.object({
+  login: z.string().min(1).max(256),
+  avatarUrl: z.string().max(2_048).optional(),
+}).passthrough();
+
+const referenceLinkSchema = z.object({
+  kind: z.enum(['issue', 'pull']),
+  number: positiveInteger,
+  url: referenceUrlSchema,
+  createdAt: z.string().max(64).nullable(),
+  title: z.string().max(4_096).optional(),
+  repo: z.string().min(1).max(1_024).optional(),
+  author: referenceAuthorSchema.optional(),
+}).passthrough();
+
+const referencesCarrierSchema = z.object({ references: z.array(referenceLinkSchema).optional() }).passthrough().refine(
+  (value) => JSON.stringify(value).length <= SOURCE_CONTROL_PROVIDER_RESPONSE_MAX,
+  { message: 'answer is larger than the response cap' },
+);
+
 const STACK_LAYERS_MAX = 50;
 
 const changeRequestStackSchema = z.object({
@@ -240,9 +264,9 @@ const dataSchemas = {
   'auth.status': z.object({ user: forgeUserSchema.nullable() }),
   changeRequestStatus: changeRequestStatusSchema,
   listChangeRequests: passThroughSchema,
-  changeRequestContext: passThroughSchema,
+  changeRequestContext: referencesCarrierSchema,
   listIssues: passThroughSchema,
-  getIssue: passThroughSchema,
+  getIssue: referencesCarrierSchema,
   issueComments: passThroughSchema,
   projectUpstream: passThroughSchema,
   projectBranches: passThroughSchema,

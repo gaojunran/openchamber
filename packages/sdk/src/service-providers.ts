@@ -209,7 +209,6 @@ export const readBrowserProviderRequest = (body: string): BrowserProviderRequest
   return { requestId, action, parameters, context: readContext(context) } as BrowserProviderRequest;
 };
 
-
 export const SOURCE_CONTROL_PROVIDER_PATH = '/source-control';
 export const SOURCE_CONTROL_PROVIDER_WIRE_VERSION = 1;
 
@@ -325,7 +324,7 @@ export type SourceControlProviderInputs = {
     number: number; project?: SourceControlProjectSelector; includeDiff: boolean; includeCIDetails: boolean; includeTimeline: boolean;
   };
   listIssues: ListInput;
-  getIssue: ReadInput & { number: number; project?: SourceControlProjectSelector };
+  getIssue: ReadInput & { number: number; project?: SourceControlProjectSelector; includeTimeline?: boolean };
   issueComments: ReadInput & { number: number; project?: SourceControlProjectSelector };
   projectUpstream: ReadInput;
   projectBranches: ReadInput & { project: SourceControlProjectSelector };
@@ -345,6 +344,8 @@ export type SourceControlProviderInputs = {
   'mutation.perform': MutationStepInput;
   'mutation.reconcile': MutationStepInput;
 };
+
+export type { SourceControlChangeRequestContext, SourceControlIssueDetail, SourceControlReferenceLink } from './source-control-references.ts';
 
 export type SourceControlNumericForgeUser = { id: number; login: string; name?: string; email?: string; avatarUrl?: string };
 export type SourceControlStringForgeUser = { id: string; login: string; name?: string; email?: string; avatarUrl?: string };
@@ -526,7 +527,6 @@ export const createSourceControlForge = ({ env }: { env: Record<string, string |
       (message, code, status) => new SourceControlForgeError(message, code, status)),
   };
 };
-
 
 export const NOTIFICATIONS_PROVIDER_PATH = '/notifications';
 export const NOTIFICATIONS_PROVIDER_WIRE_VERSION = 1;
