@@ -1003,12 +1003,15 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     ? t('directoryExplorerDialog.opencode.caption')
     : isCloneMode ? t('directoryExplorerDialog.clone.into') : null;
 
+  const browseMemoryPath = trimTrailingSeparators(normalizeSeparators(browseDirectoryAbsolutePath));
+  const browseMemoryKey = isOpenCodeView ? 'explorer:opencode' : (browseMemoryPath ? `explorer:${browseMemoryPath}` : null);
+
   const resultsSection = (
     <>
       {listCaption ? (
         <div className={cn('px-2.5 pb-1 typography-meta text-muted-foreground', !isMobile && 'ms-2', isOpenCodeView && !isMobile && 'pt-3 pe-9')}>{listCaption}</div>
       ) : null}
-      <ScrollableOverlay memoryKey={isOpenCodeView ? 'explorer:opencode' : normalizeDirectoryPath(browseDirectoryAbsolutePath) ? `explorer:${normalizeDirectoryPath(browseDirectoryAbsolutePath)}` : null} memoryReady={isOpenCodeView || (browseDirectoryAbsolutePath !== '' && normalizeDirectoryPath(listing.directory) === normalizeDirectoryPath(browseDirectoryAbsolutePath))} outerClassName="min-h-0 flex-1" className={cn('pb-1', !isMobile && 'px-2')}>
+      <ScrollableOverlay memoryKey={browseMemoryKey} memoryReady={isOpenCodeView || (browseDirectoryAbsolutePath !== '' && normalizeDirectoryPath(listing.directory) === normalizeDirectoryPath(browseDirectoryAbsolutePath))} outerClassName="min-h-0 flex-1" className={cn('pb-1', !isMobile && 'px-2')}>
         {isOpenCodeView ? openCodeRows : browseBody}
       </ScrollableOverlay>
     </>

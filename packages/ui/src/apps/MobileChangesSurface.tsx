@@ -508,7 +508,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     : mode === 'working'
       ? `${ownerKey}|working`
       : mode === 'turn'
-        ? `${ownerKey}|turn`
+        ? `${ownerKey}|turn|${currentSessionId ?? ''}`
         : comparison.key ? `${ownerKey}|${comparison.key}` : null;
   const listReady = route.type === 'list'
     && (mode === 'working' || (mode === 'turn' ? turnDiffSettled : comparisonFiles !== null));

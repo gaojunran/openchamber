@@ -1,3 +1,4 @@
+import { getRuntimeKey } from '@/lib/runtime-switch';
 import React from 'react';
 import {
   RiArrowLeftLine,
@@ -238,8 +239,9 @@ const MobileFilesSurfaceForRoot: React.FC<MobileFilesSurfaceProps & { root: stri
   }, [pendingFileFocusPath, pendingFileNavigation, root, setSelectedPath]);
 
   const searchQuery = query.trim();
+  const listRuntimeKey = getRuntimeKey();
   const listKey = route.type === 'browser'
-    ? (searchQuery ? `search:${route.directory}:${searchQuery}` : `dir:${route.directory}`)
+    ? (searchQuery ? `search:${listRuntimeKey}:${route.directory}:${searchQuery}` : `dir:${listRuntimeKey}:${route.directory}`)
     : null;
   const listReady = route.type === 'browser'
     && (searchQuery ? !isSearching && searchResultsQuery === searchQuery : entriesDirectory === route.directory);
