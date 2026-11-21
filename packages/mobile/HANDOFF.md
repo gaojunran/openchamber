@@ -102,6 +102,23 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **Secure storage** — `@aparajita/capacitor-secure-storage` for connection tokens.
 - **Deep links** — `openchamber://` URL scheme; a reusable intent vocabulary (`apps/deepLinks.ts`)
   used by notification taps, widgets, and Control Center. Cold-launch intents are stashed.
+- **Share intake (text, links, files)** — Android: `ACTION_SEND`/`ACTION_SEND_MULTIPLE` start
+  `MainActivity`, which reads the intent off the UI thread (`SharedIntentReader`) into
+  `SharedPayloadStore`; a share that arrives while the app runs comes through `onNewIntent`.
+  `SharedFilesPlugin` hands the payload to the page, which opens a new session draft with the
+  files attached, unsent and local, and the text or link typed into the composer. Files go
+  through the composer's own policy, and every refusal is reported by name: more than eight
+  files, a file over 10 MB (the composer inlines nothing larger), a batch over 32 MB, a type
+  the composer refuses, an empty file, a stream that ends before its declared size, or a
+  provider that stops responding. A stalled provider is cut off (15 s per file, 30 s per
+  share) and named, so later shares are not stuck behind it.
+- **Android share-intake tests** — `SharedPayloadTest` covers the accept/refuse decision in a
+  JVM test. `SharedIntentReaderTest` runs on a device (`./gradlew :app:connectedDebugAndroidTest`)
+  against a real `ContentResolver` and a real provider serving `content://` URIs from files and
+  pipes: text, text with a file, order, the eight-file cap, declared and undeclared oversize
+  streams, a truncated stream, a stalled stream, an empty file, a non-share intent, take-once,
+  and the package manager listing the app for `SEND`/`SEND_MULTIPLE`. The fixture provider lives
+  in `app/src/debug` with a debug-only manifest entry, so no release APK carries it.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
 - **iOS widgets + Control Center + Notification Service Extension** — WidgetKit extension
@@ -143,7 +160,9 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   brings `firebase-messaging`.
 - Manifest: permissions `INTERNET`, `CAMERA` (+ optional camera feature), `POST_NOTIFICATIONS`
   (Android 13+; older versions allow notifications by default). `windowSoftInputMode=adjustResize`.
-  FCM `default_notification_icon=@drawable/ic_stat_notify`.
+  `MainActivity` also declares `ACTION_SEND` and `ACTION_SEND_MULTIPLE` with `mimeType="*/*"`, so
+  the app appears in the system share sheet for any type; the page's attachment rules decide what
+  can actually be attached and report the rest by name. FCM `default_notification_icon=@drawable/ic_stat_notify`.
 - Adaptive and themed launcher icon: full-bleed color background + `ic_launcher_foreground`, plus the
   `<monochrome>` layer (`ic_launcher_monochrome.png`). All of them, and `assets/icon-*.png`, are written
   by `bun run brand:generate` (`scripts/brand`); `@capacitor/assets` would rewrite `ic_launcher.xml`
@@ -151,6 +170,13 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 
 ## Quirks / gotchas
 
+- **A shared item lands one commit later than its draft.** `newSessionDraft.draftId` reaches the
+  store before the chat column shows the draft: `ChatInput`'s `currentSessionId` comes from
+  `chatColumnSession` and trails by a frame. A share must wait until `currentSessionId` is null,
+  otherwise it is filed under the session the user is leaving, and the draft's own restore (an
+  empty draft) wipes it. Symptom: the share opens a new session with nothing in it, but only when
+  the share started from an existing session. `usePendingSharedDraftContent` holds the content
+  until then.
 - **iOS Simulator + MLKit**: `GoogleMLKit` barcode has no arm64-simulator slice, so
   `scripts/ios-sim-build.mjs` temporarily strips the `CapacitorMlkitBarcodeScanning` pod, builds,
   then restores it. Device builds include it normally.
