@@ -45,6 +45,7 @@ import { useFileSystemAccess } from '@/hooks/useFileSystemAccess';
 import { cn, formatDirectoryName, formatPathForDisplay } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatProjectLabel } from './sidebar/utils';
+import { useHighlightAlignment } from './useHighlightAlignment';
 import { toast } from '@/components/ui';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { useDeviceInfo } from '@/lib/device';
@@ -533,11 +534,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     return () => cancelAnimationFrame(frame);
   }, [dialogHomeDirectory, isMobile, open]);
 
-  React.useLayoutEffect(() => {
-    const row = rows[highlightedIndex];
-    if (!row) return;
-    rowRefs.current.get(row.value)?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, rows]);
+  useHighlightAlignment(highlightedIndex, rows, rowRefs);
 
   const handleClose = React.useCallback(() => {
     cloneController.current?.abort();
@@ -1011,7 +1008,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
       {listCaption ? (
         <div className={cn('px-2.5 pb-1 typography-meta text-muted-foreground', !isMobile && 'ms-2', isOpenCodeView && !isMobile && 'pt-3 pe-9')}>{listCaption}</div>
       ) : null}
-      <ScrollableOverlay memoryKey={isOpenCodeView ? 'explorer:opencode' : browseDirectoryAbsolutePath ? `explorer:${browseDirectoryAbsolutePath}` : null} memoryReady={isOpenCodeView || listing.directory === browseDirectoryAbsolutePath} outerClassName="min-h-0 flex-1" className={cn('pb-1', !isMobile && 'px-2')}>
+      <ScrollableOverlay memoryKey={isOpenCodeView ? 'explorer:opencode' : normalizeDirectoryPath(browseDirectoryAbsolutePath) ? `explorer:${normalizeDirectoryPath(browseDirectoryAbsolutePath)}` : null} memoryReady={isOpenCodeView || (browseDirectoryAbsolutePath !== '' && normalizeDirectoryPath(listing.directory) === normalizeDirectoryPath(browseDirectoryAbsolutePath))} outerClassName="min-h-0 flex-1" className={cn('pb-1', !isMobile && 'px-2')}>
         {isOpenCodeView ? openCodeRows : browseBody}
       </ScrollableOverlay>
     </>
