@@ -187,6 +187,8 @@ final class SharedIntentReader {
 
         ReadResult bytes = readBytes(resolver, uri, metadata.size, timeoutMs);
         if (bytes.reason != null) {
+            android.util.Log.i("SharedIntent", "Refused " + metadata.name + " (" + bytes.reason
+                + ", declared=" + metadata.size + ")");
             return FileRead.failure(metadata.name, bytes.reason);
         }
         return new FileRead(metadata.name, readMimeType(resolver, uri), bytes.data);
@@ -325,6 +327,7 @@ final class SharedIntentReader {
             }
             return new ReadResult(buffer.toByteArray(), null);
         } catch (IOException | RuntimeException error) {
+            android.util.Log.w("SharedIntent", "Read failed for " + uri, error);
             return ReadResult.failure(
                 timedOut.get() ? SharedPayloadStore.REASON_TIMED_OUT : SharedPayloadStore.REASON_UNREADABLE
             );
