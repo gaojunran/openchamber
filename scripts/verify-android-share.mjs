@@ -187,8 +187,14 @@ const main = async () => {
 
     pushPrivateFile(join(fixturesDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
     shareFile(`/data/data/${packageName}/files/share-e2e.png`, 'image/png');
-    await until('/share-e2e\\.png/.test(document.body.innerText)', 'the shared image in the draft');
+    await sleep(4000);
+    await evaluate('(() => { const editor = document.querySelector(\'[contenteditable="true"]\'); if (!editor) return false; editor.focus(); return true; })()');
     await sleep(1500);
+    await until(
+        `(() => [...document.querySelectorAll('*')].some((el) => !el.closest('[data-sonner-toast]') && el.children.length === 0 && (el.textContent || '').includes('share-e2e.png')))()`,
+        'the shared image in the draft',
+    );
+    await sleep(1200);
     screenshot('draft-image');
     writeFileSync(join(evidenceDir, 'after-image-share.txt'), await evaluate('document.body.innerText'));
 
