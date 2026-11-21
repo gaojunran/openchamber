@@ -1,4 +1,4 @@
-import type { SourceControlProviderId } from './providers/descriptor';
+import type { SourceControlProviderId } from './providers/descriptor.js';
 import type { ChangeRequestReviewerState } from './review-types';
 
 export type { ChangeRequestReviewerState, ReviewerStateValue } from './review-types';
