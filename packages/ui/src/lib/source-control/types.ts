@@ -1,7 +1,7 @@
-import type { SourceControlProviderId } from './providers/descriptor';
-import type { SourceControlReferenceLink } from './references';
+import type { SourceControlProviderId } from './providers/descriptor.js';
+import type { SourceControlReferenceLink } from './references.js';
 
-export type { SourceControlReferenceLink } from './references';
+export type { SourceControlReferenceLink } from './references.js';
 
 export type SourceControlProvider = SourceControlProviderId;
 
