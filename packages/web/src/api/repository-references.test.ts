@@ -43,15 +43,20 @@ describe('reference detail references', () => {
     expect(result.detail).not.toHaveProperty('references');
   });
 
-  it('fails loudly on a malformed cross-reference instead of dropping it', async () => {
-    await expect(readRaw(JSON.stringify({ connected: true, detail: {
-      number: 2, comments: [], commentTotal: 0, pull: null, references: [{ ...reference, kind: 'sticky' }],
-    } }))).rejects.toThrow();
-    await expect(readRaw(JSON.stringify({ connected: true, detail: {
-      number: 2, comments: [], commentTotal: 0, pull: null, references: [{ ...reference, number: '5' }],
-    } }))).rejects.toThrow();
-    await expect(readRaw(JSON.stringify({ connected: true, detail: {
-      number: 2, comments: [], commentTotal: 0, pull: null, references: [{ ...reference, url: 'ftp://example.test/5' }],
-    } }))).rejects.toThrow();
+  it('drops a malformed cross-reference without failing the rest of the read', async () => {
+    const raw = (references: unknown) => readRaw(JSON.stringify({ connected: true, detail: {
+      number: 2, comments: [], commentTotal: 0, pull: null, references,
+    } }));
+    const badKind = await raw([{ ...reference, kind: 'sticky' }]);
+    expect(badKind.connected && badKind.detail).not.toHaveProperty('references');
+    const badNumber = await raw([{ ...reference, number: '5' }]);
+    expect(badNumber.connected && badNumber.detail).not.toHaveProperty('references');
+    const badUrl = await raw([{ ...reference, url: 'ftp://example.test/5' }]);
+    expect(badUrl.connected && badUrl.detail).not.toHaveProperty('references');
+    const notAList = await raw({});
+    expect(notAList.connected).toBe(true);
+    const mixed = await raw([{ ...reference, kind: 'sticky' }, reference]);
+    if (!mixed.connected || mixed.detail === null) throw new Error('expected a connected read');
+    expect(mixed.detail.references).toEqual([reference]);
   });
 });

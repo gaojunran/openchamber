@@ -16,7 +16,7 @@ export const isHttpUrl = (value: BoundaryScalar): value is string => {
   }
 };
 
-export const sourceReferenceLinkSchema = z.object({
+const sourceReferenceLinkSchema = z.object({
   kind: z.enum(['issue', 'pull', 'discussion']),
   number: z.number().int().positive(),
   title: z.string().optional(),
@@ -27,11 +27,10 @@ export const sourceReferenceLinkSchema = z.object({
   willCloseTarget: z.boolean().optional(),
 });
 
-export const parseSourceReferenceLinks = (references: SourceControlReferenceLink[]): SourceControlReferenceLink[] => {
-  if (!Array.isArray(references)) throw new Error('Source control response contained invalid issue references');
-  return references.map((reference) => {
+export const parseSourceReferenceLinks = (references: unknown): SourceControlReferenceLink[] => {
+  if (!Array.isArray(references)) return [];
+  return references.flatMap((reference) => {
     const parsed = sourceReferenceLinkSchema.safeParse(reference);
-    if (!parsed.success) throw new Error('Source control response contained an invalid reference link');
-    return parsed.data;
+    return parsed.success ? [parsed.data] : [];
   });
 };
