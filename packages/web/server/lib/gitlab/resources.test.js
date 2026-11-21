@@ -169,6 +169,18 @@ describe('GitLab resource service', () => {
     ]);
   });
 
+  it('leaves reviewer state unknown when the reviewers endpoint fails, whatever the status', async () => {
+    for (const status of [404, 500, 401]) {
+      const showReviewers = vi.fn(async () => { throw Object.assign(new Error('reviewers unavailable'), { status }); });
+      const { service } = setup({
+        MergeRequests: { ...setup().client.MergeRequests, showReviewers, allCommits: list([]) },
+        MergeRequestDiscussions: { all: list([]) },
+      });
+      const result = await service.changeRequestContext('/repo', 5, { includeTimeline: true });
+      expect(result).not.toHaveProperty('reviewerStates');
+    }
+  });
+
   it('leaves reviewer state unknown when the instance has no reviewers endpoint', async () => {
     const showReviewers = vi.fn(async () => { throw Object.assign(new Error('Not Found'), { status: 404 }); });
     const { service } = setup({

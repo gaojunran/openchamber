@@ -19,14 +19,6 @@ const asPayload = (value: JsonValue | undefined): GitLabPayload | null => (isPla
 const hasFields = (value: unknown): value is Record<string, unknown> => isPlainObject(value);
 const integer = (value: unknown): value is number => Number.isInteger(value);
 
-interface Failure { status?: unknown; response?: { status?: unknown }; cause?: { response?: { status?: unknown } } }
-const hasFailure = (value: unknown): value is Failure => value != null;
-
-const requestStatus = (cause: unknown) => {
-  const error = hasFailure(cause) ? cause : undefined;
-  return error?.cause?.response?.status ?? error?.response?.status ?? error?.status;
-};
-
 const DIFF_STATS_QUERY = `query($path: ID!, $iid: String!) {
   project(fullPath: $path) {
     mergeRequest(iid: $iid) { diffStats { path additions deletions } }
@@ -65,8 +57,7 @@ export const readReviewerStates = async (
   let reviewers: unknown;
   try {
     reviewers = await client.MergeRequests.showReviewers(projectId, number);
-  } catch (error) {
-    if (requestStatus(error) !== 404) throw error;
+  } catch {
     return undefined;
   }
   if (!Array.isArray(reviewers)) return undefined;
