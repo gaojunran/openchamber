@@ -759,3 +759,59 @@ describe("input-store draft submit", () => {
     expect(useInputStore.getState().pendingDraftSubmit).toBeNull()
   })
 })
+
+describe("input-store draft content", () => {
+  const file = new File(["shared"], "notes.txt", { type: "text/plain" })
+
+  beforeEach(() => {
+    useInputStore.setState({ pendingDraftContent: null })
+  })
+
+  test("the requested draft takes the files and the text once", () => {
+    useInputStore.getState().requestDraftContent(7, { files: [file], text: "  https://example.com/x  " })
+
+    expect(useInputStore.getState().consumePendingDraftContent(7)).toEqual({
+      files: [file],
+      text: "https://example.com/x",
+      rejected: [],
+    })
+    expect(useInputStore.getState().consumePendingDraftContent(7)).toBeNull()
+  })
+
+  test("a text-only share carries no files", () => {
+    useInputStore.getState().requestDraftContent(7, { files: [], text: "Summarise this" })
+
+    expect(useInputStore.getState().consumePendingDraftContent(7)).toEqual({
+      files: [],
+      text: "Summarise this",
+      rejected: [],
+    })
+  })
+
+  test("blank text is stored as none", () => {
+    useInputStore.getState().requestDraftContent(7, { files: [file], text: "   " })
+
+    expect(useInputStore.getState().consumePendingDraftContent(7)).toEqual({ files: [file], text: null, rejected: [] })
+  })
+
+  test("a refusal the native side reported travels with the share", () => {
+    const rejected = [{ name: "huge.zip", reason: "too-large" }]
+    useInputStore.getState().requestDraftContent(7, { files: [file], rejected })
+
+    expect(useInputStore.getState().consumePendingDraftContent(7)?.rejected).toEqual(rejected)
+  })
+
+  test("another draft asking leaves the content for the draft it was requested for", () => {
+    useInputStore.getState().requestDraftContent(7, { files: [file], text: "hello" })
+    expect(useInputStore.getState().consumePendingDraftContent(8)).toBeNull()
+    expect(useInputStore.getState().pendingDraftContent).not.toBeNull()
+
+    expect(useInputStore.getState().consumePendingDraftContent(null)).toBeNull()
+    expect(useInputStore.getState().consumePendingDraftContent(7)).toEqual({
+      files: [file],
+      text: "hello",
+      rejected: [],
+    })
+    expect(useInputStore.getState().pendingDraftContent).toBeNull()
+  })
+})

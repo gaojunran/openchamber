@@ -10,10 +10,11 @@ import { pathForDroppedFile } from "@/lib/desktop"
 import { assignFileAttachmentFilenames, attachmentBasename } from "@/lib/attachmentIdentity"
 import { formatFileSize } from "@/lib/fileSize"
 import { formatMessage, useI18nStore } from "@/lib/i18n/store"
+import type { RejectedSharedFile } from "@/lib/nativeSharedFiles"
 import { opencodeClient } from "@/lib/opencode/client"
 
 const FILE_URI_PREFIX = "file://"
-const MAX_INLINE_ATTACHMENT_BYTES = 10 * 1024 * 1024
+export const MAX_INLINE_ATTACHMENT_BYTES = 10 * 1024 * 1024
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 const MAX_ATTACHMENT_PREPARATION_ATTEMPTS = 3
 const INTAKE_REDACTED_FILENAME = /\.(har|ipynb)$/i
@@ -218,6 +219,7 @@ export type InputState = {
   pinnedSyntheticParts: Map<string, SyntheticContextPart[]>
   pendingPresetSubmit: { text: string; type: "command" | "skill" } | null
   pendingDraftSubmit: { draftId: number; text: string } | null
+  pendingDraftContent: { draftId: number; files: File[]; text: string | null; rejected: RejectedSharedFile[] } | null
   pendingGuestIssue: AttachIssueRequest | null
   pendingBtwComposerRequest: PendingBtwComposerRequest | null
   attachedFiles: AttachedFile[]
@@ -236,6 +238,8 @@ export type InputState = {
   consumePendingPresetSubmit: () => { text: string; type: "command" | "skill" } | null
   requestDraftSubmit: (draftId: number, text: string) => void
   consumePendingDraftSubmit: (draftId: number | null) => string | null
+  requestDraftContent: (draftId: number, content: { files: File[]; text?: string | null; rejected?: RejectedSharedFile[] }) => void
+  consumePendingDraftContent: (draftId: number | null) => { files: File[]; text: string | null; rejected: RejectedSharedFile[] } | null
   setPendingGuestIssue: (issue: AttachIssueRequest | null) => void
   consumePendingGuestIssue: () => AttachIssueRequest | null
   requestBtwComposer: (request: PendingBtwComposerRequest) => void
@@ -281,6 +285,7 @@ export const useInputStore = create<InputState>()((set, get) => ({
   pinnedSyntheticParts: new Map(),
   pendingPresetSubmit: null,
   pendingDraftSubmit: null,
+  pendingDraftContent: null,
   pendingGuestIssue: null,
   pendingBtwComposerRequest: null,
   attachedFiles: [],
@@ -353,6 +358,27 @@ export const useInputStore = create<InputState>()((set, get) => ({
     if (pendingDraftSubmit === null) return null
     set({ pendingDraftSubmit: null })
     return pendingDraftSubmit.draftId === draftId ? pendingDraftSubmit.text : null
+  },
+
+  requestDraftContent: (draftId, content) => set({
+    pendingDraftContent: {
+      draftId,
+      files: content.files,
+      text: content.text?.trim() || null,
+      rejected: content.rejected ?? [],
+    },
+  }),
+
+  consumePendingDraftContent: (draftId) => {
+    const { pendingDraftContent } = get()
+    if (pendingDraftContent === null || draftId === null) return null
+    if (pendingDraftContent.draftId !== draftId) return null
+    set({ pendingDraftContent: null })
+    return {
+      files: pendingDraftContent.files,
+      text: pendingDraftContent.text,
+      rejected: pendingDraftContent.rejected,
+    }
   },
 
   setPendingGuestIssue: (issue) => set({ pendingGuestIssue: issue }),

@@ -1,7 +1,9 @@
 import type { JsonValue } from '@openchamber/sdk';
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { formatMessage, useI18nStore } from '@/lib/i18n';
 import { getClientPlatform } from '@/lib/platform';
 
 const sharedFileSchema = z.object({
@@ -22,6 +24,23 @@ const takePendingResultSchema = z.object({
 });
 
 export type RejectedSharedFile = z.infer<typeof rejectedFileSchema>;
+
+const REJECTED_FILE_REASONS = new Map<string, string>([
+  ['too-large', 'too large'],
+  ['batch-limit', 'share size limit'],
+  ['too-many', 'too many files'],
+  ['unsupported-type', 'unsupported type'],
+  ['unreadable', 'unreadable'],
+  ['timed-out', 'stopped responding'],
+]);
+
+export const reportSkippedSharedFiles = (rejected: RejectedSharedFile[]): void => {
+  if (rejected.length === 0) return;
+  const summary = rejected
+    .map((file) => `${file.name}: ${REJECTED_FILE_REASONS.get(file.reason) ?? file.reason}`)
+    .join('\n');
+  toast.error(formatMessage(useI18nStore.getState().dictionary, 'chat.chatInput.toast.someFilesSkipped', { summary }));
+};
 
 type SharedFilesPayload = {
   files: File[];

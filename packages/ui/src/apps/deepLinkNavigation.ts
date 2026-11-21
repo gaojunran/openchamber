@@ -3,6 +3,11 @@ import { Capacitor } from '@capacitor/core';
 
 import { isCapacitorApp } from '@/lib/platform';
 import { subscribeToNativeShortcutRequests } from '@/lib/nativeShortcutRequests';
+import {
+  reportSkippedSharedFiles,
+  subscribeToNativeSharedFiles,
+  type RejectedSharedFile,
+} from '@/lib/nativeSharedFiles';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useQuotaStore } from '@/stores/useQuotaStore';
 import type { QuotaProviderId } from '@/types';
@@ -22,7 +27,9 @@ interface DeepLinkHandlers {
 
 type ShortcutNewSessionIntent = { type: 'shortcut-new-session'; projectId?: string; text?: string };
 
-type NavigationIntent = DeepLinkIntent | ShortcutNewSessionIntent;
+type SharedFilesIntent = { type: 'shared-files'; files: File[]; text: string | null; rejected: RejectedSharedFile[] };
+
+type NavigationIntent = DeepLinkIntent | ShortcutNewSessionIntent | SharedFilesIntent;
 
 let handlers: DeepLinkHandlers = {};
 let ready = false;
@@ -44,10 +51,24 @@ const openShortcutSession = (intent: ShortcutNewSessionIntent): void => {
   useInputStore.getState().requestDraftSubmit(useSessionUIStore.getState().newSessionDraft.draftId, text);
 };
 
+const openSharedFilesSession = (intent: SharedFilesIntent): void => {
+  if (intent.files.length === 0 && !intent.text) {
+    reportSkippedSharedFiles(intent.rejected);
+    return;
+  }
+  useSessionUIStore.getState().openNewSessionDraft();
+  const draftId = useSessionUIStore.getState().newSessionDraft.draftId;
+  useInputStore.getState().requestDraftContent(draftId, intent);
+};
+
 const execute = (intent: NavigationIntent): boolean => {
   switch (intent.type) {
     case 'shortcut-new-session':
       openShortcutSession(intent);
+      return true;
+
+    case 'shared-files':
+      openSharedFilesSession(intent);
       return true;
 
     case 'session':
@@ -172,6 +193,10 @@ export const useDeepLinkSource = (options: { ready: boolean }): void => {
 
     cleanup.push(subscribeToNativeShortcutRequests((request) => {
       applyDeepLinkIntent({ type: 'shortcut-new-session', projectId: request.projectId, text: request.text });
+    }));
+
+    cleanup.push(subscribeToNativeSharedFiles((payload) => {
+      applyDeepLinkIntent({ type: 'shared-files', files: payload.files, text: payload.text, rejected: payload.rejected });
     }));
 
     void import('@capacitor/push-notifications')
