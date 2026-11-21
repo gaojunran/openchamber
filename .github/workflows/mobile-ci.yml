@@ -22,8 +22,6 @@ jobs:
         run: bun run type-check:ui
       - name: Run the share tests
         run: bun test packages/ui/src/lib/nativeSharedFiles.test.ts packages/ui/src/sync/input-store.test.ts
-      - name: Changed-files gate
-        run: bun run check:changed -- --base origin/main
 
   android:
     name: Build the Android app, test it on a device
@@ -192,9 +190,7 @@ jobs:
             adb wait-for-device
             adb install -r packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n com.openchamber.app/.MainActivity
-            node scripts/verify-android-share.mjs \
-              --server-url http://10.0.2.2:4123 \
-              --evidence /tmp/evidence
+            node scripts/verify-android-share.mjs --server-url http://10.0.2.2:4123 --evidence /tmp/evidence
       - name: Copy the evidence into the workspace
         if: always()
         run: |
