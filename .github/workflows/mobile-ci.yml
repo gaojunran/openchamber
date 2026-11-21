@@ -1,60 +1,208 @@
-name: Mobile Smoke Build
+name: verify android share
 
 on:
   workflow_dispatch:
 
-concurrency:
-  group: mobile-smoke-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  android-debug:
-    name: Android debug APK
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+  ui:
+    name: Type-check and the share tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/checkout@v4
         with:
-          node-version: '26'
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: bun install
+      - name: Type-check the shared UI
+        run: bun run type-check:ui
+      - name: Run the share tests
+        run: bun test packages/ui/src/lib/nativeSharedFiles.test.ts packages/ui/src/sync/input-store.test.ts
+      - name: Changed-files gate
+        run: bun run check:changed -- --base origin/main
 
-      - uses: actions/setup-java@v6
+  android:
+    name: Build the Android app, test it on a device
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
-
+          java-version: '21'
+      - name: Show the preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
+          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install dependencies
         run: bun install
-
-      - name: Lint mobile package
-        run: bun run lint:mobile
-
-      - name: Build Android debug APK
-        run: bun run mobile:build:android:debug
-
-      - name: Upload Android debug APK
+      - name: Generate the native plugin scaffolding
+        working-directory: packages/mobile
+        run: |
+          mkdir -p dist
+          printf '<!doctype html><meta charset="utf-8"><title>build placeholder</title>' > dist/index.html
+          bunx --bun cap sync android
+      - name: Point Gradle at the preinstalled SDK
+        working-directory: packages/mobile/android
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "sdk.dir=$SDK" > local.properties
+          cat local.properties
+      - name: Build and unit-test
+        working-directory: packages/mobile/android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
+      - name: Show the unit test results
+        if: always()
+        working-directory: packages/mobile/android
+        run: find app/build/test-results -name '*.xml' -exec grep -h '<testsuite' {} \; || true
+      - name: Upload the unit test report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: openchamber-android-debug-apk
-          path: packages/mobile/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-  ios-simulator:
-    name: iOS simulator app
-    runs-on: blacksmith-6vcpu-macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+          name: android-unit-tests
+          path: packages/mobile/android/app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: warn
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Cache the emulator image
+        uses: actions/cache@v4
         with:
-          node-version: '26'
+          path: |
+            ~/.android/avd
+            /usr/local/lib/android/sdk/system-images
+          key: android-emulator-34-default-x86_64
+      - name: Run the share intake on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: cd packages/mobile/android && ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - name: Show the instrumented test results
+        if: always()
+        working-directory: packages/mobile/android
+        run: find app/build/outputs/androidTest-results -name '*.xml' -exec grep -h '<testsuite' {} \; || true
+      - name: Upload the instrumented test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumented-tests
+          path: packages/mobile/android/app/build/reports/androidTests
+          if-no-files-found: warn
 
+  android-live:
+    name: Share into the running app
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install dependencies
         run: bun install
-
-      - name: Build iOS simulator app
-        run: bun run mobile:build:ios:simulator
+      - name: Install opencode, which the server needs to serve
+        run: |
+          npm install -g "@opencode/cli@$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
+          opencode --version
+      - name: Build the Android debug app with its assets
+        run: bun run mobile:build:android:debug
+      - name: Prepare the files to share
+        run: |
+          mkdir -p evidence
+          python3 - <<'PY'
+          import struct, zlib
+          w = h = 240
+          raw = b''.join(
+              b'\x00' + b''.join(bytes((x * 255 // w, y * 255 // h, 128)) for x in range(w))
+              for y in range(h)
+          )
+          def chunk(tag, data):
+              body = tag + data
+              return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
+          png = (b'\x89PNG\r\n\x1a\n'
+                 + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+                 + chunk(b'IDAT', zlib.compress(raw, 9))
+                 + chunk(b'IEND', b''))
+          open('evidence/share-e2e.png', 'wb').write(png)
+          open('evidence/too-large.bin', 'wb').write(b'\0' * (12 * 1024 * 1024))
+          PY
+          ls -l evidence
+      - name: Start a server for the app to connect to
+        run: |
+          set -euo pipefail
+          node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \
+            > "$RUNNER_TEMP/openchamber-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:4123/health; then
+              echo "server answered after $((attempt * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/openchamber-server.log"
+          exit 1
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Cache the emulator image
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd
+            /usr/local/lib/android/sdk/system-images
+          key: android-emulator-34-default-x86_64
+      - name: Drive the app and share into it
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            adb root
+            sleep 3
+            adb install -r packages/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n com.openchamber.app/.MainActivity
+            node scripts/verify-android-share.mjs \
+              --server-url http://10.0.2.2:4123 \
+              --evidence "$GITHUB_WORKSPACE/evidence"
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-share-live
+          path: |
+            evidence
+            ${{ runner.temp }}/openchamber-server.log
+          if-no-files-found: warn
+      - name: Stop the server
+        if: always()
+        run: pkill -f 'packages/web/bin/cli.js serve' || true
