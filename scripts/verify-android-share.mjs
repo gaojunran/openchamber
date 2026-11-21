@@ -188,8 +188,8 @@ const main = async () => {
     pushPrivateFile(join(fixturesDir, 'share-e2e.png'), `/data/data/${packageName}/files/share-e2e.png`);
     shareFile(`/data/data/${packageName}/files/share-e2e.png`, 'image/png');
     await sleep(4000);
-    await evaluate('(() => { const editor = document.querySelector(\'[contenteditable="true"]\'); if (!editor) return false; editor.focus(); return true; })()');
-    await sleep(1500);
+    await evaluate('(() => { const editor = document.querySelector(\'[contenteditable="true"]\'); if (!editor) return false; editor.click(); return true; })()');
+    await sleep(1800);
     await until(
         `(() => [...document.querySelectorAll('*')].some((el) => !el.closest('[data-sonner-toast]') && el.children.length === 0 && (el.textContent || '').includes('share-e2e.png')))()`,
         'the shared image in the draft',
@@ -198,6 +198,7 @@ const main = async () => {
     screenshot('draft-image');
     writeFileSync(join(evidenceDir, 'after-image-share.txt'), await evaluate('document.body.innerText'));
 
+    pushPrivateFile(join(fixturesDir, 'too-large.bin'), `/data/data/${packageName}/files/too-large.bin`);
     shareFile(`/data/data/${packageName}/files/too-large.bin`, 'application/octet-stream');
     await until('/Some files were skipped/i.test(document.body.innerText)', 'the skipped-file toast');
     await sleep(800);
