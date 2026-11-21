@@ -190,13 +190,16 @@ const main = async () => {
     await sleep(4000);
     const editorPoint = await evaluate(`
         (() => {
-            const editor = document.querySelector('[contenteditable="true"]');
-            if (!editor) return null;
-            const rect = editor.getBoundingClientRect();
+            const editors = [...document.querySelectorAll('[contenteditable="true"]')]
+                .map((el) => el.getBoundingClientRect())
+                .filter((rect) => rect.width > 40 && rect.height > 10 && rect.top < window.innerHeight && rect.bottom > 0);
+            if (editors.length === 0) return null;
+            const rect = editors[editors.length - 1];
             const ratio = window.devicePixelRatio || 1;
-            return { x: Math.round((rect.x + Math.min(30, rect.width / 2)) * ratio), y: Math.round((rect.y + rect.height / 2) * ratio) };
+            return { x: Math.round((rect.x + 20) * ratio), y: Math.round((rect.y + rect.height / 2) * ratio) };
         })()
     `);
+    log('editor tap point', JSON.stringify(editorPoint));
     if (editorPoint) sh('adb', ['shell', 'input', 'tap', String(editorPoint.x), String(editorPoint.y)]);
     await sleep(2500);
     await until(
