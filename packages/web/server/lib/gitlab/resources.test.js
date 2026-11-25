@@ -1407,10 +1407,28 @@ describe("GitLab fork merge requests through the maintainer's upstream clone", (
 });
 
 describe('GitLab context reviews without approvals', () => {
+  const emptyApprovedBy = vi.fn(async () => ({ body: { data: { project: { mergeRequest: { approvedBy: { nodes: [] } } } } } }));
+
   it('answers an empty list when no rule lists an approver', async () => {
-    const { service } = setup();
+    const { service } = setup({
+      MergeRequestApprovals: { showApprovalState: vi.fn(async () => ({ rules: [] })) },
+      MergeRequests: { ...setup().client.MergeRequests, requester: { post: emptyApprovedBy } },
+    });
     const context = await service.changeRequestContext('/repo', 5, { remote: 'origin' });
+    expect(emptyApprovedBy).toHaveBeenCalledTimes(1);
     expect(context.reviews).toEqual([]);
+  });
+
+  it('omits the reviews when the approvedBy read fails, keeping the rest of the context', async () => {
+    const post = vi.fn(async () => { throw new Error('GraphQL unavailable'); });
+    const { service } = setup({
+      MergeRequestApprovals: { showApprovalState: vi.fn(async () => ({ rules: [] })) },
+      MergeRequests: { ...setup().client.MergeRequests, requester: { post } },
+    });
+    const context = await service.changeRequestContext('/repo', 5, { remote: 'origin' });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(context).not.toHaveProperty('reviews');
+    expect(context.changeRequest).toMatchObject({ number: 5 });
   });
 });
 

@@ -250,15 +250,28 @@ describe('source-control provider contract', () => {
     }).success).toBe(true);
   });
 
-  test('a change request context checks the reviews it carries', () => {
+  test('a change request context checks each review and keeps its siblings', () => {
     const review = { id: '301', state: 'approved', author: { login: 'octo' }, submittedAt: '2026-10-03T10:00:00Z' };
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: [review] }).success).toBe(true);
+    const context = { issueComments: [{ id: '1', body: 'Still here' }] };
+    const { changeRequestContext } = schemas.data;
+    expect(changeRequestContext.parse({ ...context, reviews: [review] })).toEqual({ ...context, reviews: [review] });
     // Fields OpenChamber does not read still pass, including extra ones in an entry.
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: [{ ...review, extra: 1 }], voteLabels: [] }).success).toBe(true);
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: [{ ...review, state: 'pendingish' }] }).success).toBe(false);
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: [{ ...review, id: '' }] }).success).toBe(false);
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: [{ ...review, author: 'octo' }] }).success).toBe(false);
-    expect(schemas.data.changeRequestContext.safeParse({ reviews: 'none' }).success).toBe(false);
+    const extra = { ...review, id: '302', extra: 1 };
+    expect(changeRequestContext.parse({ ...context, reviews: [extra], voteLabels: [] })).toEqual({ ...context, reviews: [extra], voteLabels: [] });
+
+    const malformed = [
+      { ...review, state: 'pendingish' },
+      { ...review, id: '' },
+      { ...review, author: 'octo' },
+    ];
+    const sibling = { ...review, id: '303' };
+    expect(changeRequestContext.parse({ ...context, reviews: [...malformed, sibling] })).toEqual({ ...context, reviews: [sibling] });
+
+    const none = changeRequestContext.parse({ ...context, reviews: malformed });
+    expect(none).toEqual(context);
+    expect(Object.hasOwn(none, 'reviews')).toBe(false);
+    expect(changeRequestContext.parse({ ...context, reviews: [] })).toEqual({ ...context, reviews: [] });
+    expect(changeRequestContext.safeParse({ reviews: 'none' }).success).toBe(false);
   });
 
   test('invalid reviewer states do not discard comments or references', () => {

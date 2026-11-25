@@ -80,9 +80,14 @@ export const readReviewSummaries = async (
       return approverOf(user, isString(own) ? own : at(rule, 'approved_at'));
     });
   });
-  const approvers = fromRules.length > 0
-    ? fromRules
-    : (await readApprovedBy(client, `${project.owner}/${project.name}`, number) ?? []).map((user) => approverOf(user, null));
+  let approvers: (SourceControlReviewSummary | null)[];
+  if (fromRules.length > 0) {
+    approvers = fromRules;
+  } else {
+    const approvedBy = await readApprovedBy(client, `${project.owner}/${project.name}`, number);
+    if (approvedBy === null) return undefined;
+    approvers = approvedBy.map((user) => approverOf(user, null));
+  }
   const seen = new Set<string>();
   return approvers.filter((approver): approver is SourceControlReviewSummary => {
     if (!approver || seen.has(approver.id)) return false;

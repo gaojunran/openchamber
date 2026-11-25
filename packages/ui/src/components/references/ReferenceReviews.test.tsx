@@ -102,7 +102,7 @@ const setUp = async () => {
 
 const renderRows = async (
   runtime: RuntimeAPIs,
-  options: { pull: Pull; mode: 'others' | 'own' | null; canUndismiss?: boolean; viewerLogin: string | null; onChanged: () => void },
+  options: { pull: Pull; mode: 'others' | 'own' | null; canUndismiss?: boolean; writeAccess?: boolean; viewerLogin: string | null; onChanged: () => void },
 ) => {
   const { I18nProvider } = await import('@/lib/i18n');
   const { RuntimeAPIContext } = await import('@/contexts/runtimeAPIContext');
@@ -118,6 +118,7 @@ const renderRows = async (
             viewerLogin={options.viewerLogin}
             context={context}
             reference={reference}
+            writeAccess={options.writeAccess}
             onChanged={options.onChanged}
           />
         </RuntimeAPIContext.Provider>
@@ -154,6 +155,57 @@ const typeInto = async (element: HTMLTextAreaElement, value: string) => {
     element.dispatchEvent(new Event('input', { bubbles: true }));
   });
 };
+
+describe('the actions a detail\'s write access allows', () => {
+  const approved = () => pullOf({
+    reviewerStates: [{ ...person('mona'), state: 'approved' }],
+    reviews: [review('R1', 'approved', 'mona')],
+  });
+  const dismissed = () => pullOf({
+    reviewerStates: [{ ...person('mona'), state: 'pending' }],
+    reviews: [review('R7', 'dismissed', 'mona')],
+  });
+
+  test('an explicit false offers neither the dismiss nor the restore', async () => {
+    const { apis, sent, onChanged } = await setUp();
+    await renderRows(apis(), { pull: approved(), mode: 'others', writeAccess: false, viewerLogin: 'hubot', onChanged });
+    expect(actionTriggers()).toHaveLength(0);
+    expect(menuItems()).toEqual([]);
+
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await renderRows(apis(), { pull: dismissed(), mode: 'others', canUndismiss: true, writeAccess: false, viewerLogin: 'hubot', onChanged });
+    expect(actionTriggers()).toHaveLength(0);
+    expect(menuItems()).toEqual([]);
+    expect(sent).toHaveLength(0);
+  });
+
+  test('an explicit true keeps the dismiss and the restore', async () => {
+    const { apis, onChanged } = await setUp();
+    await renderRows(apis(), { pull: approved(), mode: 'others', writeAccess: true, viewerLogin: 'hubot', onChanged });
+    await click(actionTriggers()[0]);
+    expect(menuItems()).toEqual(['Dismiss review']);
+
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await renderRows(apis(), { pull: dismissed(), mode: 'others', canUndismiss: true, writeAccess: true, viewerLogin: 'hubot', onChanged });
+    await click(actionTriggers()[0]);
+    expect(menuItems()).toEqual(['Restore review']);
+  });
+
+  test('an absent write access keeps today\'s behaviour', async () => {
+    const { apis, onChanged } = await setUp();
+    await renderRows(apis(), { pull: approved(), mode: 'others', viewerLogin: 'hubot', onChanged });
+    await click(actionTriggers()[0]);
+    expect(menuItems()).toEqual(['Dismiss review']);
+
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await renderRows(apis(), { pull: dismissed(), mode: 'others', canUndismiss: true, viewerLogin: 'hubot', onChanged });
+    await click(actionTriggers()[0]);
+    expect(menuItems()).toEqual(['Restore review']);
+  });
+});
 
 describe('the merged reviews row', () => {
   test('one entry per person, ordered changes requested, approved, commented, awaiting', async () => {

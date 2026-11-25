@@ -284,22 +284,28 @@ const changeRequestReviewSchema = z.object({
   submittedAt: z.string().max(64).nullable().optional(),
 }).passthrough();
 
-const changeRequestContextSchema = z.union([
-  z.object({
-    reviewerStates: z.unknown().optional(),
-    reviews: z.array(changeRequestReviewSchema).max(1_000).optional(),
-  }).passthrough().transform(({ reviewerStates, ...rest }) => {
-    const states = Array.isArray(reviewerStates)
-      ? reviewerStates.flatMap((entry) => {
-        const parsed = reviewerStateSchema.safeParse(entry);
-        return parsed.success ? [parsed.data] : [];
-      })
-      : [];
-    const context = withValidReferences(rest);
-    return states.length > 0 ? { ...context, reviewerStates: states } : context;
-  }),
-  z.array(z.json()),
-]).refine(
+const changeRequestContextSchema = z.object({
+  reviewerStates: z.unknown().optional(),
+  reviews: z.array(z.unknown()).max(1_000).optional(),
+}).passthrough().transform(({ reviewerStates, reviews, ...rest }) => {
+  const states = Array.isArray(reviewerStates)
+    ? reviewerStates.flatMap((entry) => {
+      const parsed = reviewerStateSchema.safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    })
+    : [];
+  const parsedReviews = reviews === undefined
+    ? undefined
+    : reviews.flatMap((entry) => {
+      const parsed = changeRequestReviewSchema.safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    });
+  const context = withValidReferences(rest);
+  const withStates = states.length > 0 ? { ...context, reviewerStates: states } : context;
+  if (parsedReviews === undefined) return withStates;
+  if (parsedReviews.length > 0) return { ...withStates, reviews: parsedReviews };
+  return reviews?.length === 0 ? { ...withStates, reviews: [] } : withStates;
+}).refine(
   (value) => JSON.stringify(value).length <= SOURCE_CONTROL_PROVIDER_RESPONSE_MAX,
   { message: 'answer is larger than the response cap' },
 );

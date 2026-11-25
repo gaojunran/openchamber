@@ -84,19 +84,22 @@ export const ReviewerRows: React.FC<{
     viewerLogin: string | null;
     context: SourceControlReadContext | null;
     reference: RepositoryReference;
+    writeAccess?: boolean;
     onChanged?: () => void;
     trailing?: React.ReactNode;
-}> = ({ entries, mode, canUndismiss, viewerLogin, context, reference, onChanged, trailing }) => {
+}> = ({ entries, mode, canUndismiss, viewerLogin, context, reference, writeAccess, onChanged, trailing }) => {
     const { t } = useI18n();
     const { sourceControl } = useRuntimeAPIs();
+    const canAct = onChanged !== undefined && viewerLogin !== null && writeAccess !== false;
     const dismissible = React.useMemo(() => {
         const byLogin = new Map<string, RepositoryReferenceReview>();
+        if (!canAct) return byLogin;
         for (const review of dismissibleReviews(entries.flatMap((entry) => entry.reviews), mode, viewerLogin)) {
             const login = review.author?.login;
             if (login && !byLogin.has(login)) byLogin.set(login, review);
         }
         return byLogin;
-    }, [entries, mode, viewerLogin]);
+    }, [canAct, entries, mode, viewerLogin]);
     const [dismissing, setDismissing] = React.useState<RepositoryReferenceReview | null>(null);
     const [busy, setBusy] = React.useState(false);
 
@@ -124,7 +127,7 @@ export const ReviewerRows: React.FC<{
             {entries.map((entry) => {
                 const dismissibleReview = dismissible.get(entry.person.login);
                 const action = dismissibleReview?.state === entry.state ? dismissibleReview : undefined;
-                const restoring = canUndismiss && entry.state === 'dismissed'
+                const restoring = canAct && canUndismiss && entry.state === 'dismissed'
                     ? entry.reviews.find((review) => review.state === 'dismissed')
                     : undefined;
                 return (
@@ -185,9 +188,10 @@ export const ReviewerRows: React.FC<{
 export const ReferenceReviews: React.FC<{
     pull: NonNullable<RepositoryReferenceDetail['pull']> | null;
     reference: RepositoryReference;
+    writeAccess?: boolean;
     reviewersControl?: React.ReactNode;
     onChanged?: () => void;
-}> = ({ pull, reference, reviewersControl, onChanged }) => {
+}> = ({ pull, reference, writeAccess, reviewersControl, onChanged }) => {
     const { t } = useI18n();
     const directory = React.useContext(ReferenceLinksContext).directory;
     const readContext = useRepositoryReadContext(directory);
@@ -201,7 +205,6 @@ export const ReferenceReviews: React.FC<{
         return account?.user.username ?? null;
     }, [context?.accountId, entry]);
     const entries = React.useMemo(() => (pull ? mergeReviewerEntries(pull) : []), [pull]);
-    const canAct = onChanged !== undefined && viewerLogin !== null;
 
     return (
         <>
@@ -216,11 +219,12 @@ export const ReferenceReviews: React.FC<{
                         ) : null}
                         <ReviewerRows
                             entries={entries}
-                            mode={canAct ? reviewDismissMode(descriptor) : null}
-                            canUndismiss={canAct && reviewUndismiss(descriptor)}
+                            mode={reviewDismissMode(descriptor)}
+                            canUndismiss={reviewUndismiss(descriptor)}
                             viewerLogin={viewerLogin}
                             context={context}
                             reference={reference}
+                            writeAccess={writeAccess}
                             onChanged={onChanged}
                             trailing={reviewersControl}
                         />

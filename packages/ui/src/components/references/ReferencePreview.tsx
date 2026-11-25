@@ -310,7 +310,7 @@ const PullDetailRows: React.FC<{
                     {checks.status === 'error' ? <LoadError error={checks.error} /> : <Pending />}
                 </MetaRow>
             )}
-            {pull || reviewersControl ? <ReferenceReviews pull={pull} reference={reference} reviewersControl={reviewersControl} onChanged={onChanged} /> : null}
+            {pull || reviewersControl ? <ReferenceReviews pull={pull} reference={reference} writeAccess={detail.status === 'ready' ? detail.value.writeAccess : undefined} reviewersControl={reviewersControl} onChanged={onChanged} /> : null}
         </>
     );
 };
