@@ -321,7 +321,9 @@ final class QuickActionsE2ETests: XCTestCase {
     }
 
     /// The icon may be on any home page, and an off-screen one exists with a zero frame, so the
-    /// pages are walked until one copy is actually tappable.
+    /// pages are walked until one copy is actually tappable. A reboot can leave SpringBoard in
+    /// the App Library, where the icon is listed but its home-screen copy is the zero-frame one;
+    /// the home button leaves that page, and the pages are walked both ways from wherever it lands.
     private func hittableIcon(in springboard: XCUIApplication) -> XCUIElement {
         func candidate() -> XCUIElement {
             let asIcon = springboard.icons.matching(identifier: "OpenChamber").firstMatch
@@ -331,12 +333,23 @@ final class QuickActionsE2ETests: XCTestCase {
             return springboard.buttons.matching(identifier: "OpenChamber").firstMatch
         }
 
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 1)
+
         for _ in 0..<6 {
             let icon = candidate()
             if icon.exists && icon.isHittable {
                 return icon
             }
             springboard.swipeLeft()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        for _ in 0..<6 {
+            let icon = candidate()
+            if icon.exists && icon.isHittable {
+                return icon
+            }
+            springboard.swipeRight()
             Thread.sleep(forTimeInterval: 0.5)
         }
         return candidate()
