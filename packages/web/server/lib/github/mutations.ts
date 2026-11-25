@@ -12,6 +12,7 @@ import {
   requireProviderArray,
 } from './mappers.js';
 import { readPendingReview } from './review-draft.js';
+import { normalizeReviewDismiss, performReviewDismiss, reconcileReviewDismiss, resolveReviewDismissTarget } from './review-dismiss.js';
 import { normalizeAssignees, normalizeStateOperation, performAssignees, performIssueState, reconcileAssignees, reconcileIssueState } from './mutations-items.js';
 import { CONVERSATION_COMMENT_KINDS, DISCUSSION_CLOSE_REASONS, DISCUSSION_KINDS, ISSUE_KINDS, operationOf, recordKind } from './record-kinds.js';
 import { isSourceControlInteger } from '../source-control/input-guards.js';
@@ -19,6 +20,7 @@ import type { SourceControlJson, SourceControlJsonObject, SourceControlMutationT
 import type { AccountIdentity, ProviderDescriptor, ProviderMutationContext, ProviderSession } from '../source-control/provider-contract.js';
 import type { MutationCompletion, MutationRecord, MutationResult } from '../source-control/mutation-storage.js';
 import type { GitHubResourceOptions } from './resources.js';
+import { fieldAt, gqlPath, requireField } from './contracts.js';
 import type { GitHubEnvelope, Octokit, RestEndpointMethodTypes } from './contracts.js';
 import type { PullInput } from './mappers.js';
 
@@ -54,6 +56,8 @@ export interface GitHubMutationInput {
   labels?: string[]; reviewers?: string[]; assignees?: string[]; replyTo?: string | undefined; state?: ItemState; reason?: SourceControlJson | undefined;
   commentId?: number | string; answer?: boolean; threadId?: string; resolved?: boolean; verdict?: SourceControlJson | undefined;
   path?: string; side?: ReviewPosition['side']; line?: number; startLine?: number;
+  reviewId?: string | number;
+  message?: string;
 }
 export interface GitHubMutationTarget {
   sourceProject?: Project | null;
@@ -89,15 +93,6 @@ const statusOf = (cause: unknown) => {
   return failureFields(error?.response)?.status ?? error?.status;
 };
 const isArray = (value: unknown): value is unknown[] => Array.isArray(value);
-const hasGraphQLField = <Key extends string>(value: unknown, _key: Key): value is { [Name in Key]?: unknown } =>
-  value != null;
-const fieldAt = <Key extends string>(value: GitHubEnvelope['data'], key: Key) =>
-  hasGraphQLField(value, key) ? value[key] : undefined;
-const gqlPath = (value: GitHubEnvelope['data'], ...keys: string[]) => keys.reduce<GitHubEnvelope['data']>(fieldAt, value);
-const requireField = <Value>(value: Value, name: string): NonNullable<Value> => {
-  if (value == null) throw new TypeError(`GitHub mutation field ${name} is missing`);
-  return value;
-};
 const isMergeMethod = (value: unknown): value is MergeMethod => value === 'merge' || value === 'squash' || value === 'rebase';
 const isJsonBoolean = (value: SourceControlJson | undefined): value is boolean =>
   Object.prototype.toString.call(value) === '[object Boolean]';
@@ -126,6 +121,7 @@ const ROUTE_OPERATIONS = Object.freeze({
   '/pr/review/comment/update': 'review-comment-update',
   '/pr/review/comment/delete': 'review-comment-delete',
   '/pr/review/discard': 'review-discard',
+  '/pr/review/dismiss': 'review-dismiss',
   '/pr/thread/reply': 'thread-reply',
   '/pr/thread/resolve': 'thread-resolve',
   '/pr/comment/update': 'change-request-comment-update',
@@ -366,6 +362,7 @@ function normalizeOperation(operation: string, body: SourceControlJsonObject, co
     return { input: { commentId }, digest: (target) => digestOf({ target, commentId }) };
   }
   if (operation === 'review-discard') return { input: {}, digest: (target) => digestOf({ target }) };
+  if (operation === 'review-dismiss') return normalizeReviewDismiss(body, digestOf, limits, mutationError);
   throw mutationError('Mutation kind is invalid');
 }
 
@@ -968,6 +965,7 @@ export function createGitHubMutations({ descriptor, octokitOf, resolveRepo, reso
       const thread = await readReviewThread(octokit, requireField(input.threadId, 'threadId'), project, requireField(target.number, 'number'));
       return thread.isResolved === input.resolved ? { state: 'succeeded', result: {} } : unknownOutcome();
     }
+    if (operation === 'review-dismiss') return reconcileReviewDismiss(octokit, project, requireField(target.number, 'number'), Number(requireField(input.reviewId, 'reviewId')));
     if (operation === 'labels' || operation === 'issue-labels') {
       const current = await octokit.rest.issues.listLabelsOnIssue({ owner: project.owner, repo: project.name, issue_number: requireField(target.number, 'number'), per_page: 100 });
       const names = requireProviderArray(current?.data, 'GitHub returned an invalid label list').map((label) => fieldAt(label, 'name'));
@@ -1082,6 +1080,7 @@ export function createGitHubMutations({ descriptor, octokitOf, resolveRepo, reso
     if (operation === 'thread-reply' || operation === 'thread-resolve') {
       await readReviewThread(octokit, requireField(input.threadId, 'threadId'), expectedProject, target.number);
     }
+    if (operation === 'review-dismiss') return resolveReviewDismissTarget(octokit, expectedProject, target, Number(requireField(input.reviewId, 'reviewId')), mutationError);
     if (operation === 'review-comment-update' || operation === 'review-comment-delete') {
       await requirePendingComment(octokit, graphqlId(input.commentId), expectedProject, target.number);
     }
@@ -1232,6 +1231,7 @@ export function createGitHubMutations({ descriptor, octokitOf, resolveRepo, reso
         return deleteReviewComment(octokit, graphqlId(input.commentId));
       case 'review-discard':
         return discardReview(octokit, providerTarget.pendingReviewId);
+      case 'review-dismiss': return performReviewDismiss(octokit, project, number(), Number(requireField(input.reviewId, 'reviewId')), requireField(input.message, 'message'));
       case 'review': {
         const isReviewEvent = (value: unknown): value is typeof REVIEW_EVENTS[keyof typeof REVIEW_EVENTS] =>
           value === REVIEW_EVENTS.approve || value === REVIEW_EVENTS['request-changes'] || value === REVIEW_EVENTS.comment;

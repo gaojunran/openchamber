@@ -5,6 +5,7 @@ import type {
   RepositoryReferenceDetailResult,
   RepositoryReferencePage,
   RepositoryReferenceQuery,
+  RepositoryReferenceReview,
   RepositoryReferencesAcrossResult,
   SourceControlReadContext,
 } from '@openchamber/ui/lib/api/types';
@@ -106,12 +107,28 @@ const referenceCommentFields = {
   }).optional().catch(undefined),
 };
 
+const reviewSummarySchema = z.object({
+  id: z.string().min(1),
+  state: z.enum(['approved', 'changes_requested', 'commented', 'pending', 'dismissed']),
+  author: z.object({ login: z.string(), avatarUrl: z.string().optional() }).nullable(),
+  submittedAt: z.string().nullable(),
+});
+
 const reviewerStateSchema = z.object({
   id: z.string(),
   login: z.string(),
   avatarUrl: z.string().optional(),
   state: z.enum(['pending', 'approved', 'changes_requested', 'commented', 'dismissed']),
 });
+
+export const parseReviewSummaries = (reviews: unknown[] | undefined): RepositoryReferenceReview[] | undefined => {
+  if (!Array.isArray(reviews)) return undefined;
+  const parsed = reviews.flatMap((review) => {
+    const entry = reviewSummarySchema.safeParse(review);
+    return entry.success ? [entry.data] : [];
+  });
+  return parsed.length > 0 || reviews.length === 0 ? parsed : undefined;
+};
 
 const referenceDetailResultSchema = z.discriminatedUnion('connected', [
   z.object({ connected: z.literal(false) }),
@@ -141,6 +158,7 @@ const referenceDetailResultSchema = z.discriminatedUnion('connected', [
       pull: z.object({
         reviewDecision: z.enum(['approved', 'changes_requested', 'review_required']).nullable(),
         reviewers: z.array(z.object({ id: z.string(), login: z.string(), avatarUrl: z.string().optional() })).default([]),
+        reviews: z.array(z.unknown()).optional().transform(parseReviewSummaries),
         reviewerStates: z.array(z.unknown()).transform((entries) => entries.flatMap((entry) => {
           const parsed = reviewerStateSchema.safeParse(entry);
           return parsed.success ? [parsed.data] : [];
@@ -273,6 +291,7 @@ export const fetchRepositoryReferenceDetail = async (
   const response = await fetch(providerPath(context, '/references/detail'), { query, headers: { Accept: 'application/json' } });
   const result = await readPayload(response, referenceDetailResultSchema, 'Failed to load issue or pull request detail');
   if (!result.connected || result.detail === null) return result;
+  if (result.detail.pull && result.detail.pull.reviews === undefined) delete result.detail.pull.reviews;
   if (result.detail.references && result.detail.references.length === 0) delete result.detail.references;
   return result;
 };

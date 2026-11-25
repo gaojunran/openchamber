@@ -46,9 +46,6 @@ query ReferenceDetail($owner: String!, $repo: String!, $number: Int!) {
           totalCount
           nodes { commit { oid messageHeadline committedDate url author { name user { login avatarUrl } } } }
         }
-        reviews(last: 30) {
-          nodes { author { login avatarUrl } body state createdAt url }
-        }
         reviewThreads(last: ${DETAIL_THREAD_LIMIT}) {
           nodes {
             id

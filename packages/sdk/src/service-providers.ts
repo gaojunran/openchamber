@@ -1,3 +1,4 @@
+export type { SourceControlReviewState, SourceControlReviewSummary } from './source-control-reviews.ts';
 
 export const BROWSER_PROVIDER_PATH = '/browser-control';
 
@@ -208,7 +209,6 @@ export const readBrowserProviderRequest = (body: string): BrowserProviderRequest
   // and the host validated the parameters for this action before posting.
   return { requestId, action, parameters, context: readContext(context) } as BrowserProviderRequest;
 };
-
 
 export const SOURCE_CONTROL_PROVIDER_PATH = '/source-control';
 export const SOURCE_CONTROL_PROVIDER_WIRE_VERSION = 1;

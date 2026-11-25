@@ -109,6 +109,14 @@
         "issueCloseReasonWrite": true,
         "advancedSearch": true,
         "commentEdit": true
+      },
+      "capabilities": {
+        "reviewThreads": {
+          "start": false,
+          "reply": true,
+          "resolve": true
+        },
+        "reviewDismiss": "others"
       }
     },
     {
@@ -205,6 +213,14 @@
         "changeRequestEdit": true,
         "issueAssignees": true,
         "commentEdit": true
+      },
+      "capabilities": {
+        "reviewThreads": {
+          "start": true,
+          "reply": true,
+          "resolve": true
+        },
+        "reviewDismiss": "own"
       }
     },
     {
@@ -306,6 +322,15 @@
         "changeRequestEdit": true,
         "issueAssignees": true,
         "commentEdit": true
+      },
+      "capabilities": {
+        "reviewThreads": {
+          "start": false,
+          "reply": false,
+          "resolve": false
+        },
+        "reviewDismiss": "others",
+        "reviewUndismiss": true
       }
     }
   ],
@@ -470,6 +495,13 @@
         "revisions": true,
         "createByPush": true,
         "commentEdit": false
+      },
+      "capabilities": {
+        "reviewThreads": {
+          "start": false,
+          "reply": false,
+          "resolve": false
+        }
       }
     },
     "capabilities": {

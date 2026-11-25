@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { SourceControlJson } from '@openchamber/sdk';
 import { checkContextSchema, isGraphqlRateLimitError, parseSummaryRefs, summarizeCheckContexts, toDiscussionState } from './pr-summaries.js';
 import { DETAIL_COMMENT_LIMIT, DETAIL_QUERY, DETAIL_THREAD_COMMENT_LIMIT } from './detail-query.js';
+import { readReferenceReviews, toReferenceReviews } from './review-summaries.js';
 import { toReviewerStates, toReviewers } from './reviewer-states.js';
 import { referencesField } from './references.js';
 import { fetchPullStack } from './pull-stack.js';
@@ -315,15 +316,6 @@ const detailSchema = z.object({
             }),
           })),
         }),
-        reviews: z.object({
-          nodes: z.array(z.object({
-            author: userSchema,
-            body: z.string(),
-            state: z.string(),
-            createdAt: z.string().nullable(),
-            url: z.string(),
-          })),
-        }),
         reviewThreads: z.object({
           nodes: z.array(z.object({
             id: z.string().min(1),
@@ -499,7 +491,8 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number, inclu
     }
     return detail;
   }
-  for (const review of item.reviews.nodes) {
+  const { nodes: reviewNodes, total: reviewTotal } = await readReferenceReviews(octokit, owner, repo, number);
+  for (const review of reviewNodes) {
     const state = REVIEW_STATES[review.state] ?? null;
     if (review.body.trim() || state === 'approved' || state === 'changes_requested') {
       comments.push({ author: toAuthor(review.author), body: review.body, createdAt: review.createdAt, url: review.url, path: null, line: null, review: state });
@@ -522,18 +515,11 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number, inclu
   for (const thread of item.reviewThreads.nodes) {
     const [first, ...replies] = thread.comments.nodes;
     if (!first) continue;
-    comments.push({
-      ...lineComment(first),
-      thread: {
-        id: thread.id,
-        resolved: thread.isResolved,
-        canResolve: thread.isResolved ? thread.viewerCanUnresolve : thread.viewerCanResolve,
-        canReply: thread.viewerCanReply,
-        replies: replies.map(lineComment),
-      },
-    });
+    const threadSummary: NonNullable<DetailEntry['thread']> = { id: thread.id, resolved: thread.isResolved, canResolve: thread.isResolved ? thread.viewerCanUnresolve : thread.viewerCanResolve, canReply: thread.viewerCanReply, replies: replies.map(lineComment) };
+    comments.push({ ...lineComment(first), thread: threadSummary });
   }
   comments.sort(byCreatedAt);
+  const reviews = toReferenceReviews(reviewNodes);
   const detail: ReferenceDetail = {
     number: item.number,
     ...editableText(item),
@@ -542,7 +528,7 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number, inclu
     pull: {
       reviewDecision: item.reviewDecision ? REVIEW_DECISIONS[item.reviewDecision] : null,
       reviewers: toReviewers(item.reviewRequests.nodes),
-      reviewerStates: toReviewerStates(item.reviews.nodes, item.reviewRequests.nodes),
+      reviewerStates: toReviewerStates(reviewNodes, item.reviewRequests.nodes),
       checks: item.state === 'OPEN'
         ? summarizeCheckContexts(item.headCommit.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [])
         : null,
@@ -560,7 +546,11 @@ export async function fetchReferenceDetail({ octokit, owner, repo, number, inclu
       commitTotal: item.commits.totalCount,
     },
   };
-  if (stack !== undefined && detail.pull) detail.pull.stack = stack;
+  if (detail.pull) {
+    if (reviewTotal === 0) detail.pull.reviews = [];
+    else if (reviews.length > 0) detail.pull.reviews = reviews;
+    if (stack !== undefined) detail.pull.stack = stack;
+  }
   const writeAccess = writeAccessOf(parsed.repository?.viewerPermission);
   if (writeAccess !== undefined) detail.writeAccess = writeAccess;
   return { ...detail, ...references };

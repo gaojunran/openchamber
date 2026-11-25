@@ -29,6 +29,7 @@ import { trackerPresentation } from '@/lib/trackers/presentation';
 import { useTrackerDescriptor } from '@/lib/trackers/registry';
 import { isSettledTrackerState, trackerStateGlyph } from '@/lib/trackers/stateLook';
 import { type ReferenceCommentActions, type ReferenceThreadActions, type ScopedCommentActions } from './ReferenceComments';
+import { ReferenceReviews } from './ReferenceReviews';
 import { ReferenceCommentsSection, type CommentAttachments } from './ReferenceCommentsSection';
 import { commentDraftScope } from './referenceCommentDrafts';
 import { useRepositoryReadContext } from './referenceSources';
@@ -138,12 +139,6 @@ const WORKTREE_KEYS = {
     pull: 'references.picker.preview.worktree.pull',
     discussion: 'references.picker.preview.worktree.discussion',
 } as const satisfies Record<RepositoryReference['kind'], I18nKey>;
-
-const REVIEW_KEYS = {
-    approved: 'references.picker.preview.review.approved',
-    changes_requested: 'references.picker.preview.review.changesRequested',
-    review_required: 'references.picker.preview.review.required',
-} as const;
 
 const Pending = () => <Icon name="loader-4" className="size-3.5 animate-spin text-muted-foreground" />;
 
@@ -258,11 +253,14 @@ const mapDetail = <T, R>(state: CachedValue<T>, map: (value: T) => R): CachedVal
 
 const PullDetailRows: React.FC<{
     detail: CachedValue<RepositoryReferenceDetail>;
+    reference: RepositoryReference;
     checks: CachedValue<CISummary | null>;
     links?: React.ReactNode;
     onOpenChecks?: () => void;
     revisionChoice?: RevisionChoice;
-}> = ({ detail, checks, links, onOpenChecks, revisionChoice }) => {
+    reviewersControl?: React.ReactNode;
+    onChanged?: () => void;
+}> = ({ detail, reference, checks, links, onOpenChecks, revisionChoice, reviewersControl, onChanged }) => {
     const { t } = useI18n();
     const pull = detail.status === 'ready' ? detail.value.pull : null;
     return (
@@ -312,9 +310,7 @@ const PullDetailRows: React.FC<{
                     {checks.status === 'error' ? <LoadError error={checks.error} /> : <Pending />}
                 </MetaRow>
             )}
-            {pull?.reviewDecision ? (
-                <MetaRow label={t('references.picker.preview.review')}>{t(REVIEW_KEYS[pull.reviewDecision])}</MetaRow>
-            ) : null}
+            {pull || reviewersControl ? <ReferenceReviews pull={pull} reference={reference} reviewersControl={reviewersControl} onChanged={onChanged} /> : null}
         </>
     );
 };
@@ -678,15 +674,15 @@ const RepositoryPreview: React.FC<{
                             </MetaRow>
                             <PullDetailRows
                                 detail={detail}
+                                reference={reference}
                                 checks={previewChecks(reference, pullStatus, detail)}
                                 links={pullLinks}
                                 onOpenChecks={onOpenChecks}
+                                onChanged={onRefresh}
+                                reviewersControl={reviewersControl}
                                 revisionChoice={descriptor.features.revisions ? revisionChoice : undefined}
                             />
                         </>
-                    ) : null}
-                    {reviewersControl && reference.kind === 'pull' ? (
-                        <MetaRow label={t('references.picker.preview.reviewers')}>{reviewersControl}</MetaRow>
                     ) : null}
                     {showsAssignees ? (
                         <ReferenceAssigneesRow control={assigneesControl} assignees={assignees ?? []} />

@@ -34,6 +34,7 @@ import type {
   ReviewCommentInput,
   ReviewCommentUpdateInput,
   ReviewDiscardInput,
+  ReviewDismissInput,
   SetDiscussionAnswerInput,
   SetDiscussionStateInput,
   SetStateInput,
@@ -1534,31 +1535,7 @@ export type RepositoryChangeRequestReference = RepositoryReferenceCommon & {
   revisionNumber?: number;
 };
 
-export type ReviewCommentExcerpt = { startLine: number; lines: string[] };
-
-export type RepositoryReferenceComment = {
-  author: { login: string; avatarUrl?: string } | null;
-  body: string;
-  createdAt: string | null;
-  url: string;
-  id?: string;
-  canUpdate?: boolean;
-  canDelete?: boolean;
-  path: string | null;
-  line: number | null;
-  review: 'approved' | 'changes_requested' | 'commented' | 'dismissed' | null;
-  excerpt?: ReviewCommentExcerpt;
-  thread?: RepositoryReferenceThread;
-  answer?: { chosen: boolean; canChange: boolean };
-};
-
-export type RepositoryReferenceThread = {
-  id: string;
-  resolved: boolean;
-  canResolve: boolean;
-  canReply: boolean;
-  replies: RepositoryReferenceComment[];
-};
+export type { RepositoryReferenceComment, ReviewCommentExcerpt } from './repositoryReferenceTypes';
 
 export type { RepositoryReferenceDetail } from './repository-reference-detail';
 
@@ -1665,6 +1642,7 @@ export interface SourceControlAPI {
   changeRequestReviewCommentUpdate(payload: ReviewCommentUpdateInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   changeRequestReviewCommentDelete(payload: ReviewCommentDeleteInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   changeRequestReviewDiscard(payload: ReviewDiscardInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
+  changeRequestDismissReview(payload: ReviewDismissInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   issueComment(payload: CommentInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   issueCommentUpdate(payload: CommentUpdateInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   issueCommentDelete(payload: CommentDeleteInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
