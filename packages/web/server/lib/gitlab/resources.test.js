@@ -1540,6 +1540,46 @@ describe('GitLab review withdrawal', () => {
     await expect(withdrawn.service.reconcileReviewDismiss(providerTarget)).resolves.toEqual({ state: 'succeeded', result: {} });
   });
 
+  it('reads approvedBy when GitLab Free returns no approval rules', async () => {
+    const post = vi.fn(async () => ({
+      body: { data: { project: { mergeRequest: { approvedBy: { nodes: [{ username: 'ann' }] } } } } },
+    }));
+    const { service, client } = setup({
+      MergeRequestApprovals: { showApprovalState: vi.fn(async () => ({ rules: [] })) },
+      MergeRequests: { ...setup().client.MergeRequests, requester: { post } },
+      Users: { showCurrentUser: vi.fn(async () => ({ id: 3, username: 'sam' })) },
+    });
+
+    await expect(service.reconcileReviewDismiss(providerTarget)).resolves.toEqual({ state: 'succeeded', result: {} });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][1].body.variables).toEqual({ path: 'team/repo', iid: '5' });
+    expect(client.Projects.show).toHaveBeenCalledWith(2);
+  });
+
+  it('stays unknown when GitLab Free lists the viewer in approvedBy', async () => {
+    const post = vi.fn(async () => ({
+      body: { data: { project: { mergeRequest: { approvedBy: { nodes: [{ username: 'sam' }] } } } } },
+    }));
+    const { service } = setup({
+      MergeRequestApprovals: { showApprovalState: vi.fn(async () => ({ rules: [] })) },
+      MergeRequests: { ...setup().client.MergeRequests, requester: { post } },
+      Users: { showCurrentUser: vi.fn(async () => ({ id: 3, username: 'sam' })) },
+    });
+
+    await expect(service.reconcileReviewDismiss(providerTarget)).resolves.toEqual({ state: 'outcome-unknown' });
+  });
+
+  it('stays unknown when the approvedBy read fails', async () => {
+    const post = vi.fn(async () => { throw new Error('GraphQL unavailable'); });
+    const { service } = setup({
+      MergeRequestApprovals: { showApprovalState: vi.fn(async () => ({ rules: [] })) },
+      MergeRequests: { ...setup().client.MergeRequests, requester: { post } },
+      Users: { showCurrentUser: vi.fn(async () => ({ id: 3, username: 'sam' })) },
+    });
+
+    await expect(service.reconcileReviewDismiss(providerTarget)).resolves.toEqual({ state: 'outcome-unknown' });
+  });
+
   it('falls back to approvedBy when the merge request carries no approval rules', async () => {
     const post = vi.fn(async () => ({
       body: { data: { project: { mergeRequest: { approvedBy: { nodes: [

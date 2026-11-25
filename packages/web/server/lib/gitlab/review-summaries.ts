@@ -31,7 +31,7 @@ const APPROVED_BY_QUERY = `query($path: ID!, $iid: String!) {
   }
 }`;
 
-const readApprovedBy = async (client: Client, path: string, number: number): Promise<JsonValue[] | null> => {
+export const readApprovedBy = async (client: Client, path: string, number: number): Promise<JsonValue[] | null> => {
   try {
     const response = await client.MergeRequests.requester.post('../graphql', {
       body: { query: APPROVED_BY_QUERY, variables: { path, iid: String(number) } },

@@ -1,5 +1,5 @@
-import { approvalRulesOf, approversOf } from './review-summaries.js';
-import { isPlainObject } from './validation.js';
+import { approvalRulesOf, approversOf, readApprovedBy } from './review-summaries.js';
+import { isPlainObject, isString } from './validation.js';
 import type { JsonValue } from '../shared/json-values.js';
 import type { createGitLabClient } from './client.js';
 
@@ -26,11 +26,22 @@ export async function reconcileReviewDismiss(client: Client, providerTarget: Num
   const approvalState = state as JsonValue;
   // SAFETY: the GitLab requester parses a JSON body for the current user.
   const currentUser = viewer as JsonValue;
+  const viewerName = at(currentUser, 'username');
+  if (!isString(viewerName) || !viewerName) return { state: 'outcome-unknown' };
   const rules = approvalRulesOf(approvalState);
   if (!rules.length && !at(approvalState, 'rules') && !at(approvalState, 'approval_rules')) return { state: 'outcome-unknown' };
-  const viewerId = at(currentUser, 'id');
-  if (!Number.isInteger(viewerId)) return { state: 'outcome-unknown' };
-  const approved = approversOf(rules);
-  return approved.some((approver) => at(approver, 'id') === viewerId)
+  if (rules.length) {
+    const viewerId = at(currentUser, 'id');
+    if (!Number.isInteger(viewerId)) return { state: 'outcome-unknown' };
+    return approversOf(rules).some((approver) => at(approver, 'id') === viewerId)
+      ? { state: 'outcome-unknown' } : { state: 'succeeded', result: {} };
+  }
+  const project = await client.Projects.show(projectId).catch(() => null);
+  // SAFETY: the GitLab requester parses a JSON body for the project.
+  const projectPath = at(project as JsonValue, 'path_with_namespace');
+  if (!isString(projectPath) || !projectPath) return { state: 'outcome-unknown' };
+  const approvedBy = await readApprovedBy(client, projectPath, number);
+  if (approvedBy === null) return { state: 'outcome-unknown' };
+  return approvedBy.some((approver) => at(approver, 'username') === viewerName)
     ? { state: 'outcome-unknown' } : { state: 'succeeded', result: {} };
 }
