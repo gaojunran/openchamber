@@ -287,6 +287,39 @@ final class QuickActionsE2ETests: XCTestCase {
         print("E2E quick action opened one new session draft after a cold launch")
     }
 
+    /// The same menu read with the phone in German. The workflow switches the simulator's
+    /// language for this test, so the title has to come from the app's InfoPlist.strings rather
+    /// than from the English value in Info.plist. The draft itself is asserted by the English
+    /// run above; the web layer would answer in German here, which is not what is under test.
+    func testTheMenuTitleFollowsThePhoneLanguage() throws {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 60), "the app did not launch")
+        app.terminate()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(springboard.wait(for: .runningForeground, timeout: 30), "the home screen did not appear")
+
+        let icon = hittableIcon(in: springboard)
+        XCTAssertTrue(icon.waitForExistence(timeout: 5), "no app icon on any home page:\n\(springboard.debugDescription)")
+        icon.press(forDuration: 1.5)
+
+        let german = shortcut(named: "Neue Sitzung", in: springboard)
+        XCTAssertTrue(
+            german.waitForExistence(timeout: 15),
+            "the menu is not in German, so InfoPlist.strings did not reach SpringBoard:\n\(springboard.debugDescription)"
+        )
+        XCTAssertFalse(springboard.buttons["New session"].exists, "the menu kept the English title")
+        attachScreenshot(named: "1-quick-actions-menu-de")
+
+        german.tap()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 30),
+            "the localized shortcut did not bring the app to the foreground"
+        )
+        attachScreenshot(named: "2-from-shortcut-de")
+        print("E2E localized quick action read: Neue Sitzung (German), English title absent")
+    }
+
     /// The icon may be on any home page, and an off-screen one exists with a zero frame, so the
     /// pages are walked until one copy is actually tappable.
     private func hittableIcon(in springboard: XCUIApplication) -> XCUIElement {
