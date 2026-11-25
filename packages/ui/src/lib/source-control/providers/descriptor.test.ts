@@ -96,15 +96,14 @@ describe('source-control provider descriptors', () => {
     expect(parsed?.features.changeRequestPatch).toBe(false);
   });
 
-  test('reads review-thread, dismissal and restoration capabilities, and drops values it does not know', () => {
-    const reviewThreads = { start: false, reply: true, resolve: false };
+  test('reads dismissal and restoration capabilities, and drops values it does not know', () => {
     const [full] = sourceControlProviderListSchema.parse([{
-      ...acmeDescriptor(), capabilities: { reviewThreads, reviewDismiss: 'others', reviewUndismiss: true },
+      ...acmeDescriptor(), capabilities: { reviewDismiss: 'others', reviewUndismiss: true },
     }]);
-    expect(full?.capabilities).toEqual({ reviewThreads, reviewDismiss: 'others', reviewUndismiss: true });
+    expect(full?.capabilities).toEqual({ reviewDismiss: 'others', reviewUndismiss: true });
 
     const [unknown] = sourceControlProviderListSchema.parse([{
-      ...acmeDescriptor(), capabilities: { reviewThreads, reviewDismiss: 'theirs', reviewUndismiss: 'yes' },
+      ...acmeDescriptor(), capabilities: { reviewDismiss: 'theirs', reviewUndismiss: 'yes' },
     }]);
     expect(unknown?.id).toBe('acme');
     expect(unknown?.capabilities).toBeUndefined();

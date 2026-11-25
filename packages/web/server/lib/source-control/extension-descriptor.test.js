@@ -106,24 +106,22 @@ describe('extension source-control descriptors', () => {
     expect(descriptor.trackedItems).toEqual({ nestedOwners: false, defaultInstance: null, batchLimit: 25 });
   });
 
-  it('publishes review threads, drafts and dismissal from the capabilities that gate their routes', () => {
+  it('publishes review drafts and dismissal from the capabilities that gate their routes', () => {
     const declared = build({
       capabilities: {
         ...contribution().capabilities,
-        reviewThreads: { start: true, reply: true, resolve: false },
         reviewDrafts: { fileComments: true },
         reviewDismiss: 'others',
         reviewUndismiss: true,
       },
     });
     expect(declared.capabilities).toMatchObject({
-      reviewThreads: { start: true, reply: true, resolve: false },
       reviewDrafts: { fileComments: true },
       reviewDismiss: 'others',
       reviewUndismiss: true,
     });
     expect(declared.presentation.features).toMatchObject({
-      startThread: true, reviewDrafts: true, reviewDraftFileComments: true,
+      reviewDrafts: true, reviewDraftFileComments: true,
     });
     const drafts = build({
       capabilities: { ...contribution().capabilities, reviewDrafts: { fileComments: false } },

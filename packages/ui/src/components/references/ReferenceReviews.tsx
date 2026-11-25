@@ -13,7 +13,7 @@ import type { RepositoryReference, RepositoryReferenceDetail, RepositoryReferenc
 import { useI18n, type I18nKey } from '@/lib/i18n';
 import { isIMECompositionEvent } from '@/lib/ime';
 import { useSourceControlProvider } from '@/lib/source-control/providers/registry';
-import { reviewDismissMode, reviewUndismiss } from '@/lib/source-control/reviewThreads';
+import { reviewDismissMode, reviewUndismiss } from '@/lib/source-control/reviewDismissal';
 import { useSourceControlAuthEntry } from '@/stores/useSourceControlAuthStore';
 import { MetaRow } from './ReferenceMetaEditors';
 import { ReferenceLinksContext } from './referenceLinks';

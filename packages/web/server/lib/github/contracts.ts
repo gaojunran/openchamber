@@ -43,7 +43,7 @@ export interface DetailEntry {
   body: string; createdAt: string | null; url: string; path: string | null; line: number | null;
   review: string | null; id?: string; canUpdate?: boolean; canDelete?: boolean;
   excerpt?: { startLine: number; lines: string[] };
-  thread?: { id: string; resolved: boolean; canResolve: boolean; canReply: boolean; outdated?: boolean; replies: DetailEntry[] };
+  thread?: { id: string; resolved: boolean; canResolve: boolean; canReply: boolean; replies: DetailEntry[] };
   answer?: { chosen: boolean; canChange: boolean };
 }
 export interface ReferenceReview {

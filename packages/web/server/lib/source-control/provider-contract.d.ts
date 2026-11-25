@@ -148,7 +148,6 @@ export interface PublicProviderDescriptor {
     discussions?: boolean;
   };
   capabilities: {
-    reviewThreads: { start: boolean; reply: boolean; resolve: boolean };
     reviewDismiss?: 'others' | 'own';
     reviewUndismiss?: boolean;
   };
@@ -360,25 +359,6 @@ export interface ChangeRequestReviewSummary {
   state: 'approved' | 'changes_requested' | 'commented' | 'pending' | 'dismissed';
   author: { login: string; avatarUrl?: string | undefined } | null;
   submittedAt: string | null;
-}
-
-export interface ChangeRequestThreadSummary {
-  id: string;
-  path: string;
-  side?: 'old' | 'new';
-  line: number | null;
-  startLine: number | null;
-  resolved: boolean;
-  canReply: boolean;
-  canResolve: boolean;
-  outdated?: boolean;
-  comments: Array<{
-    id: string;
-    body: string;
-    createdAt: string;
-    url: string;
-    author: { login: string; avatarUrl?: string | undefined } | null;
-  }>;
 }
 
 export interface ChangeRequestContextExtensions {

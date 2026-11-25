@@ -118,13 +118,7 @@ export function publicProviderDescriptor(descriptor: ProviderDescriptor, order: 
       changeRequestTemplates: [...presentation.features.changeRequestTemplates],
       changeRequestPatch: descriptor.capabilities.changeRequestPatch === true,
     },
-    capabilities: {
-      reviewThreads: {
-        start: descriptor.capabilities.reviewThreads?.start === true,
-        reply: descriptor.capabilities.reviewThreads?.reply === true,
-        resolve: descriptor.capabilities.reviewThreads?.resolve === true,
-      },
-    },
+    capabilities: {},
   };
   if (presentation.urls.resolve) published.urls.resolve = presentation.urls.resolve;
   if (legacyFlow) published.instances.legacyFlow = { instance: legacyFlow.instance, kind: legacyFlow.kind };

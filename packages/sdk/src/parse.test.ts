@@ -1504,7 +1504,6 @@ describe('contributes.sourceControl', () => {
     expect(parsed?.capabilities).toEqual({
       projects: true, issues: true, changeRequests: true, draftChangeRequests: false, merge: { methods: ['merge'] },
       ci: false, comments: false, commentEdit: false, reviews: false, state: false, labels: false, reviewers: false,
-      reviewThreads: { start: false, reply: false, resolve: false },
       reviewUndismiss: false,
       changeRequestPatch: false, liveSummaries: true,
     });
@@ -1607,21 +1606,7 @@ describe('contributes.sourceControl', () => {
       .toMatchObject({ ok: false, code: 'invalid-service' });
   });
 
-  test('declares review threads, drafts and dismissal, and degrades a bad value', () => {
-    const threads = withSourceControl({
-      capabilities: { ...sourceControl.capabilities, reviewThreads: { start: true, reply: true } },
-    });
-    expect(threads).toMatchObject({
-      ok: true,
-      manifest: { contributes: { sourceControl: { capabilities: { reviewThreads: { start: true, reply: true, resolve: false } } } } },
-    });
-    const degradedThread = withSourceControl({
-      capabilities: { ...sourceControl.capabilities, reviewThreads: { start: 'yes', reply: true, resolve: false } },
-    });
-    if (!degradedThread.ok) throw new Error(degradedThread.message);
-    expect(degradedThread.manifest.contributes.sourceControl?.capabilities.reviewThreads)
-      .toEqual({ start: false, reply: true, resolve: false });
-
+  test('declares review drafts and dismissal, and degrades a bad value', () => {
     const drafts = withSourceControl({
       capabilities: { ...sourceControl.capabilities, reviewDrafts: { fileComments: true } },
     });

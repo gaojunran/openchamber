@@ -100,7 +100,7 @@ describe('source control provider descriptors', () => {
       const published = publicProviderDescriptor(descriptor, order);
       expect(JSON.parse(JSON.stringify(published))).toEqual(published);
       expect(published).not.toHaveProperty('transport');
-      expect(published.capabilities.reviewThreads).toEqual({ start: expect.any(Boolean), reply: expect.any(Boolean), resolve: expect.any(Boolean) });
+      expect(published.capabilities).not.toHaveProperty('reviewThreads');
     }
     expect(publicProviderDescriptor(github, 0).terminology).toMatchObject({ changeRequest: 'pullRequest', changeRequestPrefix: '#' });
     expect(publicProviderDescriptor(gitlab, 1).auth).toMatchObject({ methods: ['device', 'pat', 'cli'], cliName: 'glab' });
@@ -264,24 +264,23 @@ describe('review surfaces on the built-in descriptors', () => {
   const gerrit = sourceControlProviderDescriptors.get('gerrit');
   const forgejo = sourceControlProviderDescriptors.get('forgejo');
 
-  it('publishes thread and dismissal capabilities to the client', () => {
+  it('publishes dismissal capabilities to the client', () => {
     const published = (descriptor, order) => publicProviderDescriptor(descriptor, order).capabilities;
     expect(published(gitlab, 1)).toEqual({
-      reviewThreads: { start: true, reply: true, resolve: true }, reviewDismiss: 'own',
+      reviewDismiss: 'own',
     });
     expect(published(github, 0)).toEqual({
-      reviewThreads: { start: false, reply: true, resolve: true }, reviewDismiss: 'others',
+      reviewDismiss: 'others',
     });
     for (const descriptor of [github, gitlab, gerrit]) {
       expect(published(descriptor, 0)).not.toHaveProperty('reviewUndismiss');
     }
-    // A host without threads still says so, so the client can tell false from undeclared.
     expect(published(gitea, 2)).toEqual({
-      reviewThreads: { start: false, reply: false, resolve: false }, reviewDismiss: 'others', reviewUndismiss: true,
+      reviewDismiss: 'others', reviewUndismiss: true,
     });
     expect(published(forgejo, 4)).toMatchObject({ reviewUndismiss: true });
-    // Gerrit withdraws a vote by voting 0, so it declares no dismissal mode.
-    expect(published(gerrit, 3)).toEqual({ reviewThreads: { start: false, reply: false, resolve: false } });
+    // Gerrit withdraws a vote by voting 0, so it declares no dismissal mode and publishes no review capabilities.
+    expect(published(gerrit, 3)).toEqual({});
     expect(published(gerrit, 3)).not.toHaveProperty('reviewDismiss');
   });
 
@@ -291,12 +290,5 @@ describe('review surfaces on the built-in descriptors', () => {
     expect(forgejo.capabilities.reviewDismiss).toBe('others');
     expect(gitlab.capabilities.reviewDismiss).toBe('own');
     expect(gerrit.capabilities).not.toHaveProperty('reviewDismiss');
-  });
-
-  it('leaves Gerrit without thread start or resolve, whose API stores neither', () => {
-    expect(github.capabilities.reviewThreads).toEqual({ start: false, reply: true, resolve: true });
-    expect(gitlab.capabilities.reviewThreads).toEqual({ start: true, reply: true, resolve: true });
-    expect(gitea.capabilities.reviewThreads).toEqual({ start: false, reply: false, resolve: false });
-    expect(gerrit.capabilities.reviewThreads).toEqual({ start: false, reply: false, resolve: false });
   });
 });

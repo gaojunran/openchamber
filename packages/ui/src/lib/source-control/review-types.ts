@@ -37,7 +37,6 @@ export interface ReviewThread {
   line: number | null;
   startLine: number | null;
   resolved: boolean;
-  outdated?: boolean;
   canReply: boolean;
   canResolve: boolean;
   comments: ReviewThreadComment[];

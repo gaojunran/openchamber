@@ -407,11 +407,8 @@ Invariants:
   may send reads as its closest known meaning: an unknown change-request term as
   `pullRequest`, an unknown CI term as `checks`, an unknown auth method is
   dropped, an unknown settings field kind as `unknown`, a missing feature as off.
-- `reviewThreads.ts` reads the thread capability a descriptor publishes. A host
-  that answers threads but not reviews them hands the previews an actions object
-  without `reply` or `resolve`, so no surface draws a control the server would
-  refuse; a host that publishes nothing keeps both, which is the oldest server's
-  behaviour. `reviewDismiss` names who may dismiss: `others` for a review the
+- `reviewDismissal.ts` reads the dismissal capability a descriptor publishes.
+  `reviewDismiss` names who may dismiss: `others` for a review the
   viewer did not write, `own` for withdrawing the viewer's own approval, absent
   for no dismissal control at all; `reviewUndismiss: true` adds restoring a
   dismissed review, which only the Gitea family does. `reviewSummary.ts` holds the

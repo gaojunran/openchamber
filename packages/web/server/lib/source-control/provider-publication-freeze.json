@@ -111,11 +111,6 @@
         "commentEdit": true
       },
       "capabilities": {
-        "reviewThreads": {
-          "start": false,
-          "reply": true,
-          "resolve": true
-        },
         "reviewDismiss": "others"
       }
     },
@@ -215,11 +210,6 @@
         "commentEdit": true
       },
       "capabilities": {
-        "reviewThreads": {
-          "start": true,
-          "reply": true,
-          "resolve": true
-        },
         "reviewDismiss": "own"
       }
     },
@@ -324,11 +314,6 @@
         "commentEdit": true
       },
       "capabilities": {
-        "reviewThreads": {
-          "start": false,
-          "reply": false,
-          "resolve": false
-        },
         "reviewDismiss": "others",
         "reviewUndismiss": true
       }
@@ -496,13 +481,7 @@
         "createByPush": true,
         "commentEdit": false
       },
-      "capabilities": {
-        "reviewThreads": {
-          "start": false,
-          "reply": false,
-          "resolve": false
-        }
-      }
+      "capabilities": {}
     },
     "capabilities": {
       "identity": {

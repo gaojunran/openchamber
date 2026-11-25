@@ -107,11 +107,6 @@ export function buildExtensionDescriptor({ guestId, contribution, guest }: {
   if (capabilities.draftConversion) changeBased.draftConversion = true;
   const submitRequirements = presentation.features.submitRequirements ? { submitRequirements: true } : {};
 
-  const reviewThreads = Object.freeze({
-    start: capabilities.reviewThreads?.start === true,
-    reply: capabilities.reviewThreads?.reply === true,
-    resolve: capabilities.reviewThreads?.resolve === true,
-  });
   const publishedCapabilities: ProviderCapabilities = {
     projects: capabilities.projects,
     issues: capabilities.issues,
@@ -125,7 +120,7 @@ export function buildExtensionDescriptor({ guestId, contribution, guest }: {
     state: capabilities.state,
     labels: capabilities.labels,
     reviewers: capabilities.reviewers,
-    reviewThreads,
+    reviewThreads: Object.freeze({ start: false, reply: false, resolve: false }),
     uploads: false,
     stacks: false,
     changeRequestPatch: capabilities.changeRequestPatch,
@@ -144,7 +139,7 @@ export function buildExtensionDescriptor({ guestId, contribution, guest }: {
   type PublishedFeatures = ProviderDescriptor['presentation']['features'] & { issueEdit?: boolean; changeRequestEdit?: boolean };
   const publishedFeatures: PublishedFeatures = {
     referenceSearch: false, referenceDetail: false, listStatuses: false, referencesAcross: false,
-    startThread: capabilities.reviewThreads?.start === true,
+    startThread: false,
     authorCanReview: presentation.features.authorCanReview,
     projectUploads: false,
     issueCloseReason: presentation.features.issueCloseReason,

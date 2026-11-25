@@ -23,11 +23,6 @@ export const sourceControlCapabilitiesSchema = z.object({
   state: z.boolean().default(false),
   labels: z.boolean().default(false),
   reviewers: z.boolean().default(false),
-  reviewThreads: z.object({
-    start: z.boolean().default(false).catch(false),
-    reply: z.boolean().default(false).catch(false),
-    resolve: z.boolean().default(false).catch(false),
-  }).strict().default({ start: false, reply: false, resolve: false }),
   reviewDrafts: z.object({
     fileComments: z.boolean().default(false).catch(false),
   }).strict().optional(),
@@ -53,7 +48,6 @@ export type SourceControlCapabilities = {
   state: boolean;
   labels: boolean;
   reviewers: boolean;
-  reviewThreads: { start: boolean; reply: boolean; resolve: boolean };
   reviewDrafts?: { fileComments: boolean };
   reviewDismiss?: 'others' | 'own';
   reviewUndismiss: boolean;

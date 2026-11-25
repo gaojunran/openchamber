@@ -117,7 +117,6 @@ const descriptorSchema = z.object({
     commentEdit: z.boolean().default(false).catch(false),
   }),
   capabilities: z.object({
-    reviewThreads: z.object({ start: z.boolean(), reply: z.boolean(), resolve: z.boolean() }),
     reviewDismiss: z.enum(['others', 'own']).optional(),
     reviewUndismiss: z.boolean().optional(),
   }).optional().catch(undefined),
