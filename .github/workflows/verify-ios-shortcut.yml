@@ -1,0 +1,166 @@
+name: Verify the iOS app-icon shortcut
+
+# Temporary verification workflow for the quick-action change. It lives only on a verify/*
+# branch: it builds the app with real Xcode on a macOS runner, installs it in a simulator, then
+# drives SpringBoard the way a user does (long-press the icon, tap New session) and asserts the
+# app opens a new-session draft. Remove it before merging anything.
+
+on:
+  push:
+    branches: ['verify/**']
+  workflow_dispatch:
+
+concurrency:
+  group: verify-ios-shortcut-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-shortcut:
+    name: Build, install, and run the shortcut on a simulator
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain and the available simulators
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+          sw_vers
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install the opencode CLI the server spawns
+        run: |
+          npm install -g "@opencode/cli@$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
+          opencode --version
+
+      - name: Build the app for the simulator
+        run: |
+          set -o pipefail
+          bun run mobile:build:ios:simulator 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Report the built product and its shortcut items
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Debug-iphonesimulator/App.app' | head -1)
+          test -n "$APP"
+          echo "app: $APP"
+          echo "$APP" > "$RUNNER_TEMP/app-path.txt"
+          echo '--- UIApplicationShortcutItems in the built Info.plist'
+          /usr/libexec/PlistBuddy -c 'Print :UIApplicationShortcutItems' "$APP/Info.plist"
+          echo '--- implemented shortcut action types'
+          /usr/libexec/PlistBuddy -c 'Print :UIApplicationShortcutItems:0:UIApplicationShortcutItemUserInfo:url' "$APP/Info.plist"
+
+      - name: Pick and boot a simulator, install the app, take a screenshot
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(python3 - <<'PY'
+          import json, re, subprocess
+
+          sdk = subprocess.check_output(["xcodebuild", "-version", "-sdk", "iphonesimulator"], text=True)
+          found = re.search(r"iOS (\d+)\.(\d+)", sdk)
+          sdk_major = int(found.group(1)) if found else 999
+          print(sdk.strip().splitlines()[-1], file=__import__("sys").stderr)
+
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              found = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+
+          candidates = []
+          for runtime, devices in data["devices"].items():
+              if not version(runtime)[0]:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      candidates.append((version(runtime), device["name"], device["udid"], runtime))
+          if not candidates:
+              raise SystemExit("no available iPhone simulator")
+          pool = [entry for entry in candidates if entry[0][0] <= sdk_major] or candidates
+          pool.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+          version_picked, name, udid, runtime = pool[0]
+          print(f"picked {name} on {runtime}", file=__import__("sys").stderr)
+          print(udid)
+          PY
+          )
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$(cat "$RUNNER_TEMP/app-path.txt")"
+          xcrun simctl launch "$UDID" com.openchamber.app || true
+          sleep 8
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/installed.png"
+
+      - name: Start a server for the app to connect to
+        run: |
+          set -euo pipefail
+          node packages/web/bin/cli.js serve --foreground --port 4123 --host 127.0.0.1 \
+            > "$RUNNER_TEMP/openchamber-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:4123/health; then
+              echo "server answered after $((attempt * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/openchamber-server.log"
+          exit 1
+
+      - name: Run the shortcut test and record the simulator
+        run: |
+          set -o pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          xcrun simctl io "$UDID" recordVideo --codec=h264 "$RUNNER_TEMP/shortcut.mp4" &
+          VIDEO_PID=$!
+          sleep 3
+          xcodebuild test \
+            -only-testing:OpenChamberShareUITests/QuickActionsE2ETests \
+            -workspace packages/mobile/ios/App/App.xcworkspace \
+            -scheme OpenChamberE2E \
+            -destination "id=$UDID" \
+            -resultBundlePath "$RUNNER_TEMP/e2e.xcresult" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="-" \
+            2>&1 | tee "$RUNNER_TEMP/e2e.log"
+          STATUS=$?
+          kill -INT "$VIDEO_PID" || true
+          wait "$VIDEO_PID" || true
+          xcrun simctl io "$UDID" screenshot "$RUNNER_TEMP/after-test.png" || true
+          exit $STATUS
+
+      - name: Export the test summary and attachments
+        if: always()
+        run: |
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/e2e.xcresult" \
+            > "$RUNNER_TEMP/e2e-summary.json" || true
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/e2e.xcresult" \
+            --output-path "$RUNNER_TEMP/e2e-attachments" || true
+          ls -la "$RUNNER_TEMP" "$RUNNER_TEMP/e2e-attachments" 2>/dev/null || true
+          cat "$RUNNER_TEMP/e2e-summary.json" 2>/dev/null || true
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-shortcut-evidence
+          path: |
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/e2e.log
+            ${{ runner.temp }}/e2e-summary.json
+            ${{ runner.temp }}/e2e-attachments
+            ${{ runner.temp }}/openchamber-server.log
+            ${{ runner.temp }}/installed.png
+            ${{ runner.temp }}/after-test.png
+            ${{ runner.temp }}/shortcut.mp4
+          if-no-files-found: warn
+          retention-days: 7
