@@ -39,6 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
 
       - name: Confirm the tree under test is the PR head plus the test harness
         run: |
