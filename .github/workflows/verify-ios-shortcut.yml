@@ -59,6 +59,18 @@ jobs:
           echo '--- implemented shortcut action types'
           /usr/libexec/PlistBuddy -c 'Print :UIApplicationShortcutItems:0:UIApplicationShortcutItemUserInfo:url' "$APP/Info.plist"
 
+      # ios-sim-build.mjs strips the MLKit pod for the build, then restores the Podfile and runs
+      # pod install again in its finally block. MLKit excludes arm64 on the simulator, and that
+      # exclusion reaches the App target through the Pods xcconfig, so a later xcodebuild test
+      # would compile x86_64 and fail to import the arm64 Swift modules. Strip it again.
+      - name: Keep the MLKit-less Podfile the simulator build needs
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -euo pipefail
+          grep -v CapacitorMlkitBarcodeScanning Podfile > Podfile.sim
+          mv Podfile.sim Podfile
+          pod install
+
       - name: Pick and boot a simulator, install the app, take a screenshot
         id: sim
         run: |
